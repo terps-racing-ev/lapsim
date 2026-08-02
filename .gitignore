@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Generated simulation artifacts and large raw log files stay local.
+outputs/
+logs/*.MF4

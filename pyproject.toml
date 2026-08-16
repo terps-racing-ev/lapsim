@@ -9,9 +9,13 @@ description = "An extensible minimum-lap-time simulator"
 requires-python = ">=3.11"
 dependencies = [
     "matplotlib>=3.8",
+    "numpy>=1.26",
     "openpyxl>=3.1",
     "scipy>=1.14",
 ]
+
+[project.optional-dependencies]
+mf4 = ["asammdf>=8.8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

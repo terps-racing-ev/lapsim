@@ -4,11 +4,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from math import ceil, copysign, cos, sin
 
-from .environment import STANDARD_AIR_DENSITY_KGPM3, STANDARD_GRAVITY_MPS2
-from .track import Curve, Straight, Track
-from .utils.units import meters_per_second_to_miles_per_hour
-from .vehicle import Vehicle
+from utils.units import meters_per_second_to_miles_per_hour
+from vehicle_model.environment import (
+    STANDARD_AIR_DENSITY_KGPM3,
+    STANDARD_GRAVITY_MPS2,
+)
+from vehicle_model.vehicle import Vehicle
 
+from .track import Curve, Straight, Track
 
 DEFAULT_MAX_STEP_M = 0.5
 DEFAULT_SPEED_MAP_LINE_WIDTH = 4.0
@@ -39,9 +42,7 @@ class SpeedLimitMap:
         import matplotlib.pyplot as plt
 
         plotted_speeds_mps = (
-            tuple(speeds_mps)
-            if speeds_mps is not None
-            else self.speed_limit_mps
+            tuple(speeds_mps) if speeds_mps is not None else self.speed_limit_mps
         )
         if len(plotted_speeds_mps) != len(self.x_m):
             raise ValueError(
@@ -128,8 +129,7 @@ class SpeedLimitSolver:
         self.vehicle.validate()
         cells = self._build_cells(track)
         cell_limits_mps = [
-            self._steady_state_speed_limit(cell.curvature_per_m)
-            for cell in cells
+            self._steady_state_speed_limit(cell.curvature_per_m) for cell in cells
         ]
         return self._make_map(cells, cell_limits_mps)
 
@@ -153,13 +153,10 @@ class SpeedLimitSolver:
                     segment.span_rad,
                 )
             else:
-                raise TypeError(
-                    f"Unsupported segment type: {type(segment).__name__}"
-                )
+                raise TypeError(f"Unsupported segment type: {type(segment).__name__}")
 
             cells.extend(
-                _Cell(cell_length_m, curvature_per_m)
-                for _ in range(cell_count)
+                _Cell(cell_length_m, curvature_per_m) for _ in range(cell_count)
             )
 
         if not cells:
@@ -167,9 +164,7 @@ class SpeedLimitSolver:
         return cells
 
     def _steady_state_speed_limit(self, curvature_per_m: float) -> float:
-        vehicle_speed_limit_mps = (
-            self.vehicle.drivetrain.vehicle_speed_limit_mps
-        )
+        vehicle_speed_limit_mps = self.vehicle.drivetrain.vehicle_speed_limit_mps
         absolute_curvature_per_m = abs(curvature_per_m)
         if absolute_curvature_per_m == 0:
             return vehicle_speed_limit_mps
@@ -177,26 +172,26 @@ class SpeedLimitSolver:
         lower_speed_mps = 0.0
         upper_speed_mps = vehicle_speed_limit_mps
         for _ in range(50):
-            candidate_speed_mps = 0.5 * (
-                lower_speed_mps + upper_speed_mps
-            )
+            candidate_speed_mps = 0.5 * (lower_speed_mps + upper_speed_mps)
             aero_forces = self.vehicle.aero.forces_n(
                 candidate_speed_mps,
                 self.air_density_kgpm3,
             )
-            tire_normal_loads = self.vehicle.chassis.tire_normal_loads_n(
+            tire_normal_loads = self.vehicle.suspension.tire_normal_loads_n(
                 self.vehicle.mass_kg,
                 self.gravity_mps2,
                 aero_forces,
+                self.vehicle.chassis,
+                lateral_acceleration_mps2=(
+                    candidate_speed_mps**2 * absolute_curvature_per_m
+                ),
             )
             available_lateral_force_n = sum(
                 self.vehicle.tire.lateral_force_capacity_n(normal_load_n)
                 for normal_load_n in tire_normal_loads.all_n
             )
             required_lateral_force_n = (
-                self.vehicle.mass_kg
-                * candidate_speed_mps**2
-                * absolute_curvature_per_m
+                self.vehicle.mass_kg * candidate_speed_mps**2 * absolute_curvature_per_m
             )
             if required_lateral_force_n <= available_lateral_force_n:
                 lower_speed_mps = candidate_speed_mps

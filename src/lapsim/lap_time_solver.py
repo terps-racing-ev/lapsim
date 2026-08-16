@@ -4,14 +4,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from math import sqrt
 
+from vehicle_model.vehicle import Vehicle
+
 from .speed_limit_solver import (
     STANDARD_AIR_DENSITY_KGPM3,
     STANDARD_GRAVITY_MPS2,
     SpeedLimitMap,
 )
 from .telemetry import Telemetry
-from .vehicle import Vehicle
-
 
 DEFAULT_CONVERGENCE_TOLERANCE_MPS = 1e-6
 DEFAULT_MAX_PASSES = 1_000
@@ -208,17 +208,17 @@ class LapTimeSolver:
         speed_mps: float,
         curvature_per_m: float,
     ) -> float:
-        drag_force_n, rolling_force_n, _ = (
-            self._resistance_and_downforce(speed_mps)
-        )
+        drag_force_n, rolling_force_n, _ = self._resistance_and_downforce(speed_mps)
         aero_forces = self.vehicle.aero.forces_n(
             speed_mps,
             self.air_density_kgpm3,
         )
-        tire_normal_loads = self.vehicle.chassis.tire_normal_loads_n(
+        tire_normal_loads = self.vehicle.suspension.tire_normal_loads_n(
             self.vehicle.mass_kg,
             self.gravity_mps2,
             aero_forces,
+            self.vehicle.chassis,
+            lateral_acceleration_mps2=(speed_mps**2 * abs(curvature_per_m)),
         )
         motor_force_n = self.vehicle.drivetrain.available_wheel_force_n(
             speed_mps,
@@ -232,11 +232,13 @@ class LapTimeSolver:
 
         acceleration_mps2 = 0.0
         for _ in range(LOAD_TRANSFER_SOLVER_ITERATIONS):
-            tire_normal_loads = self.vehicle.chassis.tire_normal_loads_n(
+            tire_normal_loads = self.vehicle.suspension.tire_normal_loads_n(
                 self.vehicle.mass_kg,
                 self.gravity_mps2,
                 aero_forces,
+                self.vehicle.chassis,
                 longitudinal_acceleration_mps2=acceleration_mps2,
+                lateral_acceleration_mps2=(speed_mps**2 * abs(curvature_per_m)),
             )
             rear_traction_force_n = self._tire_force_capacity_n(
                 tire_normal_loads.rear_n,
@@ -258,9 +260,7 @@ class LapTimeSolver:
         curvature_per_m: float,
         tire_normal_loads_n: Sequence[float],
     ) -> float:
-        lateral_force_n = (
-            self.vehicle.mass_kg * speed_mps**2 * abs(curvature_per_m)
-        )
+        lateral_force_n = self.vehicle.mass_kg * speed_mps**2 * abs(curvature_per_m)
         lateral_force_limit_n = self._tire_force_capacity_n(
             tire_normal_loads_n,
             lateral=True,
@@ -268,9 +268,7 @@ class LapTimeSolver:
         if lateral_force_limit_n <= 0:
             return 0.0
         lateral_utilization = min(1.0, lateral_force_n / lateral_force_limit_n)
-        remaining_longitudinal_fraction = sqrt(
-            max(0.0, 1.0 - lateral_utilization**2)
-        )
+        remaining_longitudinal_fraction = sqrt(max(0.0, 1.0 - lateral_utilization**2))
         longitudinal_force_limit_n = self._tire_force_capacity_n(
             tire_normal_loads_n,
             lateral=False,
@@ -302,8 +300,7 @@ class LapTimeSolver:
             self.air_density_kgpm3,
         )
         rolling_force_n = self.vehicle.rolling_resistance_coefficient * (
-            self.vehicle.mass_kg * self.gravity_mps2
-            + aero_forces.downforce_n
+            self.vehicle.mass_kg * self.gravity_mps2 + aero_forces.downforce_n
         )
         return aero_forces.drag_n, rolling_force_n, aero_forces.downforce_n
 
@@ -316,8 +313,7 @@ class LapTimeSolver:
         return sqrt(
             max(
                 0.0,
-                initial_speed_mps**2
-                + 2.0 * acceleration_mps2 * distance_m,
+                initial_speed_mps**2 + 2.0 * acceleration_mps2 * distance_m,
             )
         )
 
@@ -330,8 +326,7 @@ class LapTimeSolver:
         return sqrt(
             max(
                 0.0,
-                final_speed_mps**2
-                + 2.0 * braking_deceleration_mps2 * distance_m,
+                final_speed_mps**2 + 2.0 * braking_deceleration_mps2 * distance_m,
             )
         )
 
@@ -344,9 +339,7 @@ class LapTimeSolver:
     ) -> LapResult:
         lap_time_s = sum(
             cell_length_m / (0.5 * (speeds[index] + speeds[index + 1]))
-            for index, cell_length_m in enumerate(
-                speed_limit_map.cell_length_m
-            )
+            for index, cell_length_m in enumerate(speed_limit_map.cell_length_m)
         )
         telemetry = self._make_telemetry(speed_limit_map, speeds)
         return LapResult(
@@ -375,16 +368,15 @@ class LapTimeSolver:
 
         for index, cell_length_m in enumerate(speed_limit_map.cell_length_m):
             cell_average_speed_mps = 0.5 * (speeds[index] + speeds[index + 1])
-            cell_acceleration_mps2 = (
-                speeds[index + 1] ** 2 - speeds[index] ** 2
-            ) / (2.0 * cell_length_m)
-            drag_force_n, rolling_force_n, _ = (
-                self._resistance_and_downforce(cell_average_speed_mps)
+            cell_acceleration_mps2 = (speeds[index + 1] ** 2 - speeds[index] ** 2) / (
+                2.0 * cell_length_m
+            )
+            drag_force_n, rolling_force_n, _ = self._resistance_and_downforce(
+                cell_average_speed_mps
             )
             requested_force_n = max(
                 0.0,
-                self.vehicle.effective_longitudinal_mass_kg
-                * cell_acceleration_mps2
+                self.vehicle.effective_longitudinal_mass_kg * cell_acceleration_mps2
                 + drag_force_n
                 + rolling_force_n,
             )
@@ -407,9 +399,7 @@ class LapTimeSolver:
                 self.vehicle.battery,
             )
             energy_used_j += (
-                cell_battery_power_w
-                * cell_length_m
-                / cell_average_speed_mps
+                cell_battery_power_w * cell_length_m / cell_average_speed_mps
             )
 
             telemetry_distance_m.append(
@@ -427,11 +417,13 @@ class LapTimeSolver:
             cumulative_energy_j.append(energy_used_j)
 
         return Telemetry(
-            distance_m=tuple(telemetry_distance_m),
-            speed_mps=tuple(average_speed_mps),
-            longitudinal_acceleration_mps2=tuple(acceleration_mps2),
-            propulsion_force_n=tuple(propulsion_force_n),
-            motor_torque_nm=tuple(motor_torque_nm),
-            battery_power_w=tuple(battery_power_w),
-            cumulative_energy_j=tuple(cumulative_energy_j),
+            {
+                "vehicle.distance_m": tuple(telemetry_distance_m),
+                "vehicle.speed_mps": tuple(average_speed_mps),
+                "vehicle.longitudinal_acceleration_mps2": tuple(acceleration_mps2),
+                "drivetrain.wheel_force_n": tuple(propulsion_force_n),
+                "motor.torque_nm": tuple(motor_torque_nm),
+                "battery.power_w": tuple(battery_power_w),
+                "energy.cumulative_j": tuple(cumulative_energy_j),
+            }
         )

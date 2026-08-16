@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from .utils.units import meters_per_second_to_miles_per_hour
+from utils.units import meters_per_second_to_miles_per_hour
 
 if TYPE_CHECKING:
     from .lap_time_solver import LapResult
@@ -28,8 +28,7 @@ def plot_lap_telemetry_summary(result: "LapResult"):
         for acceleration_mps2 in telemetry.longitudinal_acceleration_mps2
     ]
     battery_power_kw = [
-        battery_power_w / 1_000.0
-        for battery_power_w in telemetry.battery_power_w
+        battery_power_w / 1_000.0 for battery_power_w in telemetry.battery_power_w
     ]
 
     line_segments = [

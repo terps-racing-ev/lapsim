@@ -1,0 +1,71 @@
+{
+  "input_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\first_lap.csv",
+  "calibration_input_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\mf4_to_csv\\endurance_selected.csv",
+  "output_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\corrected_imu\\first_lap_corrected_imu.csv",
+  "plots": {
+    "raw_vs_corrected_axes": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\corrected_imu\\first_lap_raw_vs_corrected_axes.png",
+    "stationary_gravity_validation": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\corrected_imu\\stationary_gravity_validation.png"
+  },
+  "axis_convention": {
+    "sensor_and_output": "+X longitudinal/forward, +Y lateral/left, +Z up; right-handed",
+    "accelerometer_interpretation": "At rest the recorded accelerometer reads +gravity in +Z after leveling.",
+    "yaw": "No yaw rotation is applied; X/Y names retain the assumed vehicle mounting axes."
+  },
+  "calibration": {
+    "time_basis": "mf4_time_s from calibration_input_csv",
+    "requested_window_mf4_time_s": [
+      450.0,
+      465.0
+    ],
+    "stationary_selection": {
+      "max_gnss_speed_mps": 0.3,
+      "max_3axis_angular_rate_degps": 5.0,
+      "selected_samples": 74
+    },
+    "estimator": "component-wise median of selected raw accelerometer samples",
+    "stationary_gravity_sensor_mps2": [
+      2.875,
+      -0.75,
+      9.0
+    ],
+    "stationary_gravity_magnitude_mps2": 9.477770043633681,
+    "derived_sensor_to_level_pitch_deg": -17.65840613794489,
+    "derived_sensor_to_level_roll_deg": -4.763641690726178,
+    "applied_sensor_to_level_pitch_deg": -17.65840613794489,
+    "applied_sensor_to_level_roll_deg": -4.763641690726178,
+    "override_used": false,
+    "rotation_order": "active Rx(roll), then active Ry(pitch): level_vector = Ry(pitch) @ Rx(roll) @ sensor_vector",
+    "rotation_matrix_sensor_to_level": [
+      [
+        0.952881942958784,
+        0.025191131825347168,
+        -0.30229358190416594
+      ],
+      [
+        0.0,
+        0.9965457582448797,
+        0.08304547985373999
+      ],
+      [
+        0.30334139642174246,
+        -0.07913253819697631,
+        0.9495904583637156
+      ]
+    ],
+    "stationary_corrected_mean_mps2": [
+      3.885780586188048e-16,
+      9.71445146547012e-17,
+      1.7763568394002505e-15
+    ],
+    "stationary_corrected_rms_mps2": [
+      3.885780586188048e-16,
+      9.71445146547012e-17,
+      1.7763568394002505e-15
+    ]
+  },
+  "output_columns_added": {
+    "accel_[xyz]_leveled_mps2": "Accelerometer axes after the fixed sensor-to-level rotation; includes +gravity in Z.",
+    "accel_[xyz]_gravity_removed_mps2": "Leveled acceleration minus stationary gravity [0, 0, |g_stationary|]; use X/Y for longitudinal/lateral comparison.",
+    "corrected_[longitudinal|lateral|vertical]_accel_mps2": "Semantic aliases for the gravity-removed X/Y/Z channels consumed by downstream analyses."
+  }
+}

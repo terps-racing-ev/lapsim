@@ -1,7 +1,7 @@
 # Real acceleration log validation
 
 > Status note: the explicit-slip experiment documented below was subsequently
-> removed from the simulator. The current chronological model is again the
+> removed from the simulator. The current distance-domain model uses the
 > no-slip point-mass baseline; these results are retained for comparison only.
 
 ## Post-slip-model rerun
@@ -84,7 +84,7 @@ Launch 13 was used for the detailed comparison because it is the first activatio
 | Front-left speed valid | No |
 | Front-right speed valid | No |
 
-The configured 3.7 final-drive ratio and 16-inch tire geometry are consistent with motor RPM and the VCU-reported speed. The median ratio inferred from motor RPM and VCU speed is 3.72; the small difference is consistent with effective rolling radius and signal quantization.
+The configured 3.7 chain-drive ratio and 16-inch tire geometry are consistent with motor RPM and the VCU-reported speed. The median ratio inferred from motor RPM and VCU speed is 3.72; the small difference is consistent with effective rolling radius and signal quantization.
 
 ## What the real torque curve is doing
 
@@ -144,7 +144,7 @@ See [the full run-13 comparison](../outputs/real_accel_validation/run13_sim_comp
 
 To match this type of real launch trace physically, the model needs a separate driven-wheel state:
 
-1. Integrate rear wheel angular speed from motor torque, final-drive inertia, and tire reaction torque.
+1. Integrate rear wheel angular speed from motor torque, chain-drive inertia, and tire reaction torque.
 2. Calculate longitudinal slip from wheel circumferential speed and vehicle speed.
 3. Replace the present instantaneous grip clip with a longitudinal force-versus-slip model.
 4. Apply the recorded time-based launch request and 70 kW motor-mechanical cap.

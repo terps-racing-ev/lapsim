@@ -6,4 +6,8 @@ __pycache__/
 
 # Generated simulation artifacts and large raw log files stay local.
 outputs/
-logs/*.MF4
+logs/
+tmp/
+analysis/**/output/
+analysis/**/tuning_output/
+analysis/archive/results/

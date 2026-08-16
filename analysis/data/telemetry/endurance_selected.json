@@ -1,0 +1,108 @@
+{
+  "input_mf4": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\logs\\6.20_endurance_comp.MF4",
+  "output_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\mf4_to_csv\\endurance_selected.csv",
+  "requested_start_mf4_time_s": null,
+  "requested_finish_mf4_time_s": null,
+  "clock_channel": "CAN9.GnssSpeed.Speed",
+  "requested_frequency_hz": null,
+  "samples": 5774,
+  "median_output_rate_hz": 5.050505050505222,
+  "selected_signal_count": 19,
+  "channels": {
+    "gps_speed_mps": {
+      "source": "CAN9.GnssSpeed.Speed",
+      "sampling": "clock",
+      "native_median_rate_hz": 5.050505050505222
+    },
+    "gps_latitude_deg": {
+      "source": "CAN9.GnssPos.Latitude",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "gps_longitude_deg": {
+      "source": "CAN9.GnssPos.Longitude",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "gps_distance_trip_m": {
+      "source": "CAN9.GnssDistance.DistanceTrip",
+      "sampling": "linear",
+      "native_median_rate_hz": 1.0101010101010008
+    },
+    "accel_x_mps2": {
+      "source": "CAN9.ImuData.AccelerationX",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "accel_y_mps2": {
+      "source": "CAN9.ImuData.AccelerationY",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "accel_z_mps2": {
+      "source": "CAN9.ImuData.AccelerationZ",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "angular_rate_x_degps": {
+      "source": "CAN9.ImuData.AngularRateX",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "angular_rate_y_degps": {
+      "source": "CAN9.ImuData.AngularRateY",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "angular_rate_z_degps": {
+      "source": "CAN9.ImuData.AngularRateZ",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "motor_rpm": {
+      "source": "CAN1.High_Speed_Message.HS_Motor_Speed",
+      "sampling": "linear",
+      "native_median_rate_hz": 333.3333333317417
+    },
+    "torque_command_nm": {
+      "source": "CAN1.High_Speed_Message.HS_Torque_Command",
+      "sampling": "hold",
+      "native_median_rate_hz": 333.3333333317417
+    },
+    "torque_feedback_nm": {
+      "source": "CAN1.High_Speed_Message.HS_Torque_Feedback",
+      "sampling": "linear",
+      "native_median_rate_hz": 333.3333333317417
+    },
+    "apps_percent": {
+      "source": "CAN1.VCU_APPS_Values.VCU_APPS_Value",
+      "sampling": "hold",
+      "native_median_rate_hz": 100.00000000009095
+    },
+    "brake_pressure_psi": {
+      "source": "CAN1.VCU_BSE.VCU_BSE_PSI",
+      "sampling": "hold",
+      "native_median_rate_hz": 100.00000000009095
+    },
+    "battery_power_kw": {
+      "source": "CAN1.HVC_IO_Summary.HVC_Pack_Power_kW",
+      "sampling": "linear",
+      "native_median_rate_hz": 9.896091044038924
+    },
+    "battery_voltage_v": {
+      "source": "CAN1.HVC_IO_VSense.HVC_Batt_Voltage_V",
+      "sampling": "linear",
+      "native_median_rate_hz": 9.896091044038924
+    },
+    "battery_current_a": {
+      "source": "CAN1.HVC_IO_Current.HVC_Pack_Current_A",
+      "sampling": "linear",
+      "native_median_rate_hz": 9.896091044038924
+    },
+    "battery_soc_percent": {
+      "source": "CAN1.HVC_SOC.HVC_SOC_Percent",
+      "sampling": "hold",
+      "native_median_rate_hz": 9.896091044038924
+    }
+  }
+}

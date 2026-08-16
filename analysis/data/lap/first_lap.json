@@ -1,0 +1,132 @@
+{
+  "input_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\mf4_to_csv\\endurance_selected.csv",
+  "input_metadata": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\mf4_to_csv\\endurance_selected.json",
+  "output_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\first_lap.csv",
+  "output_plot": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\first_lap_gps_comparison.png",
+  "output_map_overlay": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\first_lap_map_overlay.png",
+  "official_map_image": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\official_course_map.png",
+  "gps_filter": {
+    "type": "Savitzky-Golay",
+    "window_samples": 7,
+    "polynomial_order": 2
+  },
+  "map_alignment": {
+    "type": "best-fit affine display transform",
+    "note": "The course drawing is schematic and not georeferenced.",
+    "x0_px": 191.16640510408817,
+    "horizontal_scale_px_per_m": 1.544531662081115,
+    "y0_px": 45.39177211919679,
+    "horizontal_shear_px_per_m": -0.39893328694424995,
+    "vertical_scale_px_per_m": -1.4533923076562085,
+    "rms_distance_to_red_line_px": 5.053763310140913
+  },
+  "samples": 343,
+  "median_output_rate_hz": 5.050505050505584,
+  "lap_start_mf4_time_s": 465.81645399999996,
+  "lap_finish_mf4_time_s": 535.3131539999999,
+  "lap_duration_s": 69.49669999999998,
+  "moving_speed_mps": 2.0,
+  "minimum_lap_s": 60.0,
+  "maximum_lap_s": 90.0,
+  "gate_exit_radius_m": 50.0,
+  "gate_latitude_deg": 42.068637999989846,
+  "gate_longitude_deg": -84.2369110000609,
+  "finish_gate_error_m": 4.973515236062089,
+  "channels": {
+    "gps_speed_mps": {
+      "source": "CAN9.GnssSpeed.Speed",
+      "sampling": "clock",
+      "native_median_rate_hz": 5.050505050505222
+    },
+    "gps_latitude_deg": {
+      "source": "CAN9.GnssPos.Latitude",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "gps_longitude_deg": {
+      "source": "CAN9.GnssPos.Longitude",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "gps_distance_trip_m": {
+      "source": "CAN9.GnssDistance.DistanceTrip",
+      "sampling": "linear",
+      "native_median_rate_hz": 1.0101010101010008
+    },
+    "accel_x_mps2": {
+      "source": "CAN9.ImuData.AccelerationX",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "accel_y_mps2": {
+      "source": "CAN9.ImuData.AccelerationY",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "accel_z_mps2": {
+      "source": "CAN9.ImuData.AccelerationZ",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "angular_rate_x_degps": {
+      "source": "CAN9.ImuData.AngularRateX",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "angular_rate_y_degps": {
+      "source": "CAN9.ImuData.AngularRateY",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "angular_rate_z_degps": {
+      "source": "CAN9.ImuData.AngularRateZ",
+      "sampling": "linear",
+      "native_median_rate_hz": 5.050505050505584
+    },
+    "motor_rpm": {
+      "source": "CAN1.High_Speed_Message.HS_Motor_Speed",
+      "sampling": "linear",
+      "native_median_rate_hz": 333.3333333317417
+    },
+    "torque_command_nm": {
+      "source": "CAN1.High_Speed_Message.HS_Torque_Command",
+      "sampling": "hold",
+      "native_median_rate_hz": 333.3333333317417
+    },
+    "torque_feedback_nm": {
+      "source": "CAN1.High_Speed_Message.HS_Torque_Feedback",
+      "sampling": "linear",
+      "native_median_rate_hz": 333.3333333317417
+    },
+    "apps_percent": {
+      "source": "CAN1.VCU_APPS_Values.VCU_APPS_Value",
+      "sampling": "hold",
+      "native_median_rate_hz": 100.00000000009095
+    },
+    "brake_pressure_psi": {
+      "source": "CAN1.VCU_BSE.VCU_BSE_PSI",
+      "sampling": "hold",
+      "native_median_rate_hz": 100.00000000009095
+    },
+    "battery_power_kw": {
+      "source": "CAN1.HVC_IO_Summary.HVC_Pack_Power_kW",
+      "sampling": "linear",
+      "native_median_rate_hz": 9.896091044038924
+    },
+    "battery_voltage_v": {
+      "source": "CAN1.HVC_IO_VSense.HVC_Batt_Voltage_V",
+      "sampling": "linear",
+      "native_median_rate_hz": 9.896091044038924
+    },
+    "battery_current_a": {
+      "source": "CAN1.HVC_IO_Current.HVC_Pack_Current_A",
+      "sampling": "linear",
+      "native_median_rate_hz": 9.896091044038924
+    },
+    "battery_soc_percent": {
+      "source": "CAN1.HVC_SOC.HVC_SOC_Percent",
+      "sampling": "hold",
+      "native_median_rate_hz": 9.896091044038924
+    }
+  }
+}

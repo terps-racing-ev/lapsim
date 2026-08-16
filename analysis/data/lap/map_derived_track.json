@@ -1,0 +1,34 @@
+{
+  "type": "map-derived SpatialTrack",
+  "output_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\map_derived_track.csv",
+  "preview": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\map_derived_track_preview.png",
+  "side_by_side_comparison": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\map_derived_track_side_by_side.png",
+  "overlay_comparison": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\map_derived_track_overlay.png",
+  "source_map": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\official_course_map.png",
+  "source_manual_alignment": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\manual_map_alignment.json",
+  "source_first_lap_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\first_lap.csv",
+  "manual_alignment_created_utc": "2026-08-11T04:30:21.608551+00:00",
+  "solid_red_component_pixels": 3874,
+  "retained_centerline_pixels": 1651,
+  "driving_direction_selection": "reverse",
+  "normalized_progress_correspondence_rmse_px": 12.856115704358155,
+  "smoothing": {
+    "type": "local periodic Gaussian",
+    "sigma_centerline_pixels": 4.0
+  },
+  "unscaled_smoothed_length_m": 1016.6494365120457,
+  "reference_length_m": null,
+  "uniform_geometry_scale": 1.0,
+  "target_cell_length_m": 1.0,
+  "track_length_m": 1016.6494365120457,
+  "cell_count": 1017,
+  "maximum_absolute_curvature_per_m": 0.426187552490252,
+  "p95_absolute_curvature_per_m": 0.12265348712486449,
+  "turning_angle_integral_rad": 6.288194473678196,
+  "closed_geometry_error_m": 0.0,
+  "extraction_assumptions": [
+    "largest connected saturated-red component is the course drawing",
+    "non-start endpoint branches are dashed cone/slalom annotations",
+    "manual affine alignment converts drawing pixels to east/north metres"
+  ]
+}

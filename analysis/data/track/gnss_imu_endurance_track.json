@@ -1,0 +1,46 @@
+{
+  "method": "spatial complementary GNSS-position / corrected-IMU-Y-curvature fusion with geometry-registered official-centerline constraint",
+  "input_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\corrected_imu\\first_lap_corrected_imu.csv",
+  "corrected_imu_channel": "corrected_lateral_accel_mps2",
+  "curvature_equation": "kappa_solver = kappa_imu_raw + lowpass(kappa_official_geometry - kappa_imu_raw)",
+  "curvature_scale": "automatic closed-lap winding calibration",
+  "course_map": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\official_course_map.png",
+  "map_alignment": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\manual_map_alignment.json",
+  "official_reference_track": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\first_endurance_lap\\map_derived_track.csv",
+  "parameters": {
+    "reference_geometry_weight": 0.85,
+    "reference_station_search_m": 60.0,
+    "reference_station_smoothing_m": 10.0,
+    "solver_curvature_correction_m": 60.0,
+    "spacing_m": 0.5,
+    "imu_smoothing_m": 1.5,
+    "gnss_heading_window_m": 35.0,
+    "heading_correction_m": 55.0,
+    "position_correction_m": 45.0,
+    "minimum_curvature_speed_mps": 4.0,
+    "gnss_speed_lag_s": 0.3072,
+    "curvature_gain": null
+  },
+  "outputs": {
+    "track_csv": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\gnss_imu_track\\output\\gnss_imu_endurance_track.csv",
+    "map_overlay": "C:\\Users\\adisa\\Documents\\Workspace\\TREV\\Code\\Lapsim\\Joe Lapsim\\python_lapsim\\analysis\\gnss_imu_track\\output\\gnss_imu_track_on_official_map.png"
+  },
+  "metrics": {
+    "track_length_m": 989.0,
+    "sample_count": 1979,
+    "fused_closure_error_m": 0.7602276786450262,
+    "rms_fused_to_filtered_gnss_m": 2.799424559946739,
+    "maximum_fused_to_filtered_gnss_m": 7.683133875567636,
+    "maximum_absolute_imu_curvature_per_m": 0.3429970373279603,
+    "applied_curvature_gain": 1.4240079011704079,
+    "raw_imu_integrated_heading_change_rad": 4.412324750456347,
+    "scaled_imu_integrated_heading_change_rad": 6.283185307179573
+  },
+  "limitations": [
+    "The official map is schematic; its saved affine alignment is display-only.",
+    "The default output uses the extracted official centerline as an 85% geometric constraint after local station registration, so corresponding corners are blended together.",
+    "Solver curvature follows corrected IMU Y locally and uses official geometry only for low-frequency drift correction.",
+    "The fixed IMU correction removes stationary mounting tilt, not dynamic roll.",
+    "IMU curvature below the minimum speed is interpolated from valid samples."
+  ]
+}

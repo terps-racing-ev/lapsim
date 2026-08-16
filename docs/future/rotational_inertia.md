@@ -28,12 +28,13 @@ The wheel-referenced inertia is then converted to equivalent translating mass:
 m_\mathrm{rotating}=\frac{I_\mathrm{wheel}}{r^2}
 \]
 
-where `G` is the final-drive ratio and `r` is the loaded tire rolling radius.
-At the current `3.7` ratio and `0.2032 m` radius, the workbook values produce:
+where `G` is the chain-drive ratio and `r` is the loaded tire rolling radius.
+At the current `3.455` ratio and `0.2032 m` radius, including the configured
+`0.75 kg*m^2` combined driven-wheel inertia, the model produces:
 
-- Wheel-referenced inertia: approximately `0.1700 kg*m^2`
-- Equivalent rotating mass: approximately `4.12 kg`
-- Total effective longitudinal mass: approximately `298.95 kg`
+- Wheel-referenced inertia: approximately `0.8986 kg*m^2`
+- Equivalent rotating mass: approximately `21.76 kg`
+- Total effective longitudinal mass: approximately `316.59 kg`
 
 The simulator uses effective mass only when converting net longitudinal force
 to acceleration or braking deceleration. Physical vehicle mass remains in
@@ -49,9 +50,9 @@ model assumes that energy is dissipated rather than recovered.
 
 The workbook does not provide inertias for:
 
-- Wheel and tire assemblies
 - Sprockets and chain
-- Differential and axles beyond the lumped final-drive placeholders
+- The breakdown of the lumped driven-wheel inertia into wheels, tires, axles,
+  and wheel hardware
 
 These should be added as separately mutable component values once measured or
 calculated. A more detailed model could track rotational kinetic energy at each

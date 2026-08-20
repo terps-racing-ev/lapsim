@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .aero.model import AeroForces
-    from .mech.loads import TireNormalLoads
+    from .mech.loads import TireForces, TireNormalLoads
+    from .mech.tire import TireStates
     from .vehicle import Vehicle
 
 
@@ -209,6 +210,7 @@ class AeroModel(ComponentModel, Protocol):
         self,
         vehicle_speed_mps: float,
         air_density_kgpm3: float,
+        body_roll_angle_rad: float = 0.0,
     ) -> AeroForces: ...
 
     def update_state(
@@ -216,11 +218,12 @@ class AeroModel(ComponentModel, Protocol):
         vehicle_speed_mps: float,
         air_density_kgpm3: float,
         timestep_s: float,
+        body_roll_angle_rad: float = 0.0,
     ) -> AeroForces: ...
 
 
 class TireModel(ComponentModel, Protocol):
-    """Per-tire force-capacity model."""
+    """Four-contact-patch force, capacity, and slip model."""
 
     rolling_radius_m: float
 
@@ -237,10 +240,26 @@ class TireModel(ComponentModel, Protocol):
         lateral_force_n: float,
     ) -> float: ...
 
+    def lateral_forces_n(
+        self,
+        normal_loads_n: TireNormalLoads,
+        total_lateral_force_n: float,
+    ) -> TireForces: ...
+
+    def calculate_forces(
+        self,
+        normal_loads_n: TireNormalLoads,
+        total_lateral_force_n: float,
+        drive_force_request_n: float,
+        front_brake_force_request_n: float,
+        rear_brake_force_request_n: float,
+        vehicle_speed_mps: float,
+        timestep_s: float,
+    ) -> TireStates: ...
+
     def update_state(
         self,
-        longitudinal_force_n: float,
-        lateral_force_n: float,
+        states: TireStates,
         timestep_s: float,
     ) -> None: ...
 
@@ -250,6 +269,12 @@ class ChassisModel(ComponentModel, Protocol):
 
     wheelbase_m: float
     cg_height_m: float
+    front_track_width_m: float
+    rear_track_width_m: float
+    front_axle_height_m: float
+    rear_axle_height_m: float
+    front_roll_axis_height_m: float
+    rear_roll_axis_height_m: float
     static_front_weight_fraction: float
 
 
@@ -257,6 +282,13 @@ class SuspensionModel(ComponentModel, Protocol):
     """Normal-load distribution model consumed by tire calculations."""
 
     current_tire_normal_loads_n: TireNormalLoads
+
+    def body_roll_angle_rad(
+        self,
+        mass_kg: float,
+        chassis: ChassisModel,
+        lateral_acceleration_mps2: float,
+    ) -> float: ...
 
     def tire_normal_loads_n(
         self,
@@ -278,6 +310,7 @@ class SuspensionModel(ComponentModel, Protocol):
 class BrakeModel(ComponentModel, Protocol):
     """Friction-brake limit and operating-state model."""
 
+    maximum_pressure_psi: float
     current_force_request_n: float
     current_friction_force_n: float
 

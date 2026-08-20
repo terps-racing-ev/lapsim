@@ -10,10 +10,10 @@ from scipy.optimize import differential_evolution, minimize
 
 from vehicle_model.vehicle import Vehicle
 
-from .endurance import EnduranceRunConfig, EnduranceRunResult, EnduranceSimulator
-from .path_constraints import PathConstraintSolver, PathSpeedConstraints
-from .scoring import ScoreBreakdown, ScoringModel
-from .spatial_track import SpatialTrack
+from ..courses.spatial_track import SpatialTrack
+from ..events.endurance import EnduranceRunConfig, EnduranceRunResult, EnduranceSimulator
+from ..events.scoring import ScoreBreakdown, ScoringModel
+from ..solvers.path_constraints import PathConstraintSolver, PathSpeedConstraints
 from .torque_profile import (
     TorqueProfile,
     TorqueProfileParameterization,
@@ -102,7 +102,11 @@ class EnduranceTorqueOptimizer:
         self.constraint_solver = (
             constraint_solver
             if constraint_solver is not None
-            else PathConstraintSolver()
+            else PathConstraintSolver(
+                maximum_brake_pressure_psi=(
+                    run_config.maximum_brake_pressure_psi
+                )
+            )
         )
         if not track.closed:
             raise ValueError("Endurance torque optimization requires a closed track")

@@ -4,16 +4,17 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from math import atan
+from math import atan, isfinite
 
 from vehicle_model.environment import (
     STANDARD_AIR_DENSITY_KGPM3,
     STANDARD_GRAVITY_MPS2,
 )
+from vehicle_model.mech.brakes import DEFAULT_MAXIMUM_BRAKE_PRESSURE_PSI
 from vehicle_model.vehicle import Vehicle
 
-from .controls import Controls
-from .spatial_track import SpatialTrack
+from ..core.controls import Controls
+from ..courses.spatial_track import SpatialTrack
 
 
 class PathConstraintViolation(RuntimeError):
@@ -47,15 +48,22 @@ class PathConstraintSolver:
         maximum_passes: int = 500,
         gravity_mps2: float = STANDARD_GRAVITY_MPS2,
         air_density_kgpm3: float = STANDARD_AIR_DENSITY_KGPM3,
+        maximum_brake_pressure_psi: float | None = DEFAULT_MAXIMUM_BRAKE_PRESSURE_PSI,
     ) -> None:
         if convergence_tolerance_mps <= 0:
             raise ValueError("convergence_tolerance_mps must be positive")
         if maximum_passes <= 0:
             raise ValueError("maximum_passes must be positive")
+        if maximum_brake_pressure_psi is not None and (
+            not isfinite(maximum_brake_pressure_psi)
+            or maximum_brake_pressure_psi <= 0.0
+        ):
+            raise ValueError("maximum_brake_pressure_psi must be finite and positive")
         self.convergence_tolerance_mps = convergence_tolerance_mps
         self.maximum_passes = maximum_passes
         self.gravity_mps2 = gravity_mps2
         self.air_density_kgpm3 = air_density_kgpm3
+        self.maximum_brake_pressure_psi = maximum_brake_pressure_psi
 
     def solve(self, track: SpatialTrack, vehicle: Vehicle) -> PathSpeedConstraints:
         """Calculate local lateral limits then a cyclic backward brake pass."""
@@ -121,9 +129,14 @@ class PathConstraintSolver:
             candidate.speed_mps = entry_speed_mps
             candidate.longitudinal_acceleration_mps2 = 0.0
             candidate.lateral_acceleration_mps2 = entry_speed_mps**2 * curvature_per_m
+            pressure_psi = (
+                1.0e9
+                if self.maximum_brake_pressure_psi is None
+                else self.maximum_brake_pressure_psi
+            )
             maximum_braking = Controls(
-                front_brake_pressure_psi=1.0e9,
-                rear_brake_pressure_psi=1.0e9,
+                front_brake_pressure_psi=pressure_psi,
+                rear_brake_pressure_psi=pressure_psi,
                 steering_angle_rad=atan(
                     curvature_per_m * candidate.chassis.wheelbase_m
                 ),
@@ -160,17 +173,20 @@ class PathConstraintSolver:
         upper_speed_mps = vehicle_speed_limit_mps
         for _ in range(50):
             candidate_speed_mps = 0.5 * (lower_speed_mps + upper_speed_mps)
-            aero_forces = vehicle.aero.forces_n(
-                candidate_speed_mps, self.air_density_kgpm3
+            lateral_acceleration_mps2 = (
+                candidate_speed_mps**2 * absolute_curvature_per_m
+            )
+            aero_forces = vehicle.aero_forces_n(
+                candidate_speed_mps,
+                lateral_acceleration_mps2,
+                self.air_density_kgpm3,
             )
             tire_normal_loads = vehicle.suspension.tire_normal_loads_n(
                 vehicle.mass_kg,
                 self.gravity_mps2,
                 aero_forces,
                 vehicle.chassis,
-                lateral_acceleration_mps2=(
-                    candidate_speed_mps**2 * absolute_curvature_per_m
-                ),
+                lateral_acceleration_mps2=lateral_acceleration_mps2,
             )
             available_lateral_force_n = sum(
                 vehicle.tire.lateral_force_capacity_n(normal_load_n)

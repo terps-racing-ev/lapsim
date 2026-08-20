@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import numpy as np
 
-from lapsim.spatial import SpatialCoordinate
+from lapsim.courses.spatial import SpatialCoordinate
 
 
 class SpatialCoordinateTests(TestCase):

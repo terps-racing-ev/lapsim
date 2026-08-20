@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import Protocol, runtime_checkable
 
 
@@ -35,6 +36,96 @@ class ScoreBreakdown:
 @runtime_checkable
 class ScoringModel(Protocol):
     def score(self, run: EnduranceRunSummary) -> ScoreBreakdown: ...
+
+
+@dataclass(frozen=True, slots=True)
+class TimedEventScoreBreakdown:
+    """Estimated acceleration or skidpad points from one scoring time."""
+
+    points: float
+    maximum_points: float
+    minimum_points: float
+    scoring_time_s: float | None
+    minimum_time_s: float
+    maximum_time_s: float
+    completed: bool
+    time_eligible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TimedEventScoring:
+    """Ratio scoring shared by acceleration and skidpad.
+
+    Formula SAE acceleration uses a first-power time ratio; skidpad uses the
+    squared time ratio.  Reference times are explicit because they depend on
+    the fastest competition result.
+    """
+
+    event_name: str
+    minimum_time_s: float
+    maximum_time_s: float
+    maximum_points: float
+    minimum_points: float
+    time_ratio_exponent: float
+
+    def __post_init__(self) -> None:
+        if not self.event_name:
+            raise ValueError("event_name cannot be empty")
+        values = (
+            self.minimum_time_s,
+            self.maximum_time_s,
+            self.maximum_points,
+            self.minimum_points,
+            self.time_ratio_exponent,
+        )
+        if any(not isfinite(value) or value <= 0.0 for value in values):
+            raise ValueError("timed-event scoring values must be finite and positive")
+        if self.maximum_time_s <= self.minimum_time_s:
+            raise ValueError("maximum_time_s must exceed minimum_time_s")
+        if self.maximum_points <= self.minimum_points:
+            raise ValueError("maximum_points must exceed minimum_points")
+
+    def score(
+        self,
+        scoring_time_s: float | None,
+        *,
+        completed: bool,
+    ) -> TimedEventScoreBreakdown:
+        valid_time = (
+            scoring_time_s is not None
+            and isfinite(scoring_time_s)
+            and scoring_time_s > 0.0
+        )
+        eligible = completed and valid_time
+        if not eligible:
+            points = 0.0
+        elif scoring_time_s >= self.maximum_time_s:
+            points = self.minimum_points
+        elif scoring_time_s <= self.minimum_time_s:
+            points = self.maximum_points
+        else:
+            numerator = (
+                (self.maximum_time_s / scoring_time_s) ** self.time_ratio_exponent
+                - 1.0
+            )
+            denominator = (
+                (self.maximum_time_s / self.minimum_time_s)
+                ** self.time_ratio_exponent
+                - 1.0
+            )
+            points = self.minimum_points + (
+                self.maximum_points - self.minimum_points
+            ) * numerator / denominator
+        return TimedEventScoreBreakdown(
+            points=points,
+            maximum_points=self.maximum_points,
+            minimum_points=self.minimum_points,
+            scoring_time_s=scoring_time_s if valid_time else None,
+            minimum_time_s=self.minimum_time_s,
+            maximum_time_s=self.maximum_time_s,
+            completed=completed,
+            time_eligible=eligible,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,11 +271,34 @@ FSAE_2026_MI6_SCORING = FSAEEnduranceEfficiencyScoring(
     efficiency_factor_maximum=0.797,
 )
 
+# Formula SAE Electric Michigan 2026 event references.  The maximum time is
+# 150% of the fastest acceleration time and 125% of the fastest skidpad time.
+FSAE_2026_MI_ACCELERATION_SCORING = TimedEventScoring(
+    event_name="acceleration",
+    minimum_time_s=3.697,
+    maximum_time_s=5.546,
+    maximum_points=100.0,
+    minimum_points=4.5,
+    time_ratio_exponent=1.0,
+)
+FSAE_2026_MI_SKIDPAD_SCORING = TimedEventScoring(
+    event_name="skidpad",
+    minimum_time_s=4.782,
+    maximum_time_s=5.978,
+    maximum_points=75.0,
+    minimum_points=3.5,
+    time_ratio_exponent=2.0,
+)
+
 
 __all__ = [
     "EnduranceRunSummary",
     "FSAEEnduranceEfficiencyScoring",
+    "FSAE_2026_MI_ACCELERATION_SCORING",
     "FSAE_2026_MI6_SCORING",
+    "FSAE_2026_MI_SKIDPAD_SCORING",
     "ScoreBreakdown",
     "ScoringModel",
+    "TimedEventScoreBreakdown",
+    "TimedEventScoring",
 ]

@@ -3,7 +3,7 @@
 from math import isclose, pi
 from unittest import TestCase
 
-from lapsim.track import Curve, Straight, Track
+from lapsim.courses.track import Curve, Straight, Track
 
 
 class TrackTests(TestCase):

@@ -11,7 +11,7 @@ from vehicle_model.environment import (
 )
 from vehicle_model.vehicle import Vehicle
 
-from .track import Curve, Straight, Track
+from ..courses.track import Curve, Straight, Track
 
 DEFAULT_MAX_STEP_M = 0.5
 DEFAULT_SPEED_MAP_LINE_WIDTH = 4.0
@@ -173,8 +173,12 @@ class SpeedLimitSolver:
         upper_speed_mps = vehicle_speed_limit_mps
         for _ in range(50):
             candidate_speed_mps = 0.5 * (lower_speed_mps + upper_speed_mps)
-            aero_forces = self.vehicle.aero.forces_n(
+            lateral_acceleration_mps2 = (
+                candidate_speed_mps**2 * absolute_curvature_per_m
+            )
+            aero_forces = self.vehicle.aero_forces_n(
                 candidate_speed_mps,
+                lateral_acceleration_mps2,
                 self.air_density_kgpm3,
             )
             tire_normal_loads = self.vehicle.suspension.tire_normal_loads_n(
@@ -182,9 +186,7 @@ class SpeedLimitSolver:
                 self.gravity_mps2,
                 aero_forces,
                 self.vehicle.chassis,
-                lateral_acceleration_mps2=(
-                    candidate_speed_mps**2 * absolute_curvature_per_m
-                ),
+                lateral_acceleration_mps2=lateral_acceleration_mps2,
             )
             available_lateral_force_n = sum(
                 self.vehicle.tire.lateral_force_capacity_n(normal_load_n)

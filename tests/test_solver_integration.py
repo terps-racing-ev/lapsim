@@ -4,7 +4,7 @@ from math import pi
 from unittest import TestCase
 
 from lapsim import LapTimeSolver, SpeedLimitSolver
-from lapsim.track import Curve, Straight, Track
+from lapsim.courses.track import Curve, Straight, Track
 from vehicle_model import Vehicle
 
 

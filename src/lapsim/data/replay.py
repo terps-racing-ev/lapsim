@@ -7,8 +7,8 @@ from math import isfinite
 
 from vehicle_model.vehicle import Vehicle
 
-from .controls import Controls
-from .telemetry import Telemetry, TelemetryRecorder
+from ..core.controls import Controls
+from ..core.telemetry import Telemetry, TelemetryRecorder
 
 # Compatibility alias. Replays now return the same mapping-style telemetry as
 # every other simulation path.

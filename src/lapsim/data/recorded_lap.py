@@ -8,7 +8,7 @@ from math import atan
 from pathlib import Path
 from collections.abc import Sequence
 
-from .controls import Controls
+from ..core.controls import Controls
 
 
 @dataclass(frozen=True, slots=True)

@@ -208,8 +208,10 @@ def main() -> None:
         has_braking_slip = all(
             name in data
             for name in (
-                "sim_brakes_front_braking_slip_percent",
-                "sim_brakes_rear_braking_slip_percent",
+                "sim_tire_front_left_slip_percent",
+                "sim_tire_front_right_slip_percent",
+                "sim_tire_rear_left_slip_percent",
+                "sim_tire_rear_right_slip_percent",
             )
         )
         brake_figure, brake_axes = plt.subplots(
@@ -262,14 +264,22 @@ def main() -> None:
         if has_braking_slip:
             brake_axes[2].plot(
                 distance_m,
-                data["sim_brakes_front_braking_slip_percent"],
+                -0.5
+                * (
+                    data["sim_tire_front_left_slip_percent"]
+                    + data["sim_tire_front_right_slip_percent"]
+                ),
                 color="#E45756",
                 lw=1.3,
                 label="Front braking slip",
             )
             brake_axes[2].plot(
                 distance_m,
-                data["sim_brakes_rear_braking_slip_percent"],
+                -0.5
+                * (
+                    data["sim_tire_rear_left_slip_percent"]
+                    + data["sim_tire_rear_right_slip_percent"]
+                ),
                 color="#54A24B",
                 lw=1.3,
                 label="Rear braking slip",
@@ -371,7 +381,7 @@ def main() -> None:
     )
     slip_axes[0].plot(
         distance_m,
-        data["sim_wheel_slip_percent"],
+        data["sim_tire_driven_slip_percent"],
         color="#E45756",
         lw=1.25,
         label="Simulated driven-wheel slip",
@@ -380,13 +390,13 @@ def main() -> None:
     slip_axes[0].legend(loc="best", frameon=False)
     slip_axes[1].plot(
         distance_m,
-        data["sim_wheel_slip_vehicle_speed_mps"],
+        data["sim_tire_vehicle_speed_mps"],
         lw=1.25,
         label="Vehicle speed",
     )
     slip_axes[1].plot(
         distance_m,
-        data["sim_wheel_slip_wheel_surface_speed_mps"],
+        data["sim_tire_driven_wheel_surface_speed_mps"],
         lw=1.25,
         label="Driven-wheel surface speed",
     )
@@ -399,7 +409,7 @@ def main() -> None:
         axis.grid(alpha=0.25)
         axis.spines[["top", "right"]].set_visible(False)
         axis.set_xlim(float(distance_m[0]), float(distance_m[-1]))
-    slip_figure.suptitle("Endurance full lap: simple driven-wheel slip model")
+    slip_figure.suptitle("Endurance full lap: per-tire longitudinal slip model")
     slip_figure.savefig(args.output_dir / "wheel_slip_vs_distance.png", dpi=190)
     plt.close(slip_figure)
 
@@ -436,10 +446,10 @@ def main() -> None:
         "simulated_soc_percent": simulated_soc_percent,
         "recorded_cumulative_energy_kwh": recorded_energy_kwh,
         "simulated_cumulative_energy_kwh": simulated_energy_kwh,
-        "simulated_wheel_slip_percent": data["sim_wheel_slip_percent"],
-        "simulated_wheel_slip_speed_mps": data["sim_wheel_slip_slip_speed_mps"],
+        "simulated_wheel_slip_percent": data["sim_tire_driven_slip_percent"],
+        "simulated_wheel_slip_speed_mps": data["sim_tire_driven_slip_speed_mps"],
         "simulated_wheel_surface_speed_mps": data[
-            "sim_wheel_slip_wheel_surface_speed_mps"
+            "sim_tire_driven_wheel_surface_speed_mps"
         ],
         **{name: data[name] for name, _, _ in limit_names},
     }
@@ -518,13 +528,18 @@ def main() -> None:
             for name, label, _ in limit_names
         },
         "wheel_slip": {
-            "model": "quasi-static linear force-utilization model",
+            "model": "per-tire combined-force utilization model",
             "peak_configured_percent": 10.0,
-            "maximum_simulated_percent": float(np.max(data["sim_wheel_slip_percent"])),
-            "mean_simulated_percent": float(np.mean(data["sim_wheel_slip_percent"])),
+            "maximum_simulated_percent": float(
+                np.max(np.abs(data["sim_tire_driven_slip_percent"]))
+            ),
+            "mean_simulated_percent": float(
+                np.mean(np.abs(data["sim_tire_driven_slip_percent"]))
+            ),
             "distance_fraction_above_1_percent": float(
                 np.sum(
-                    np.diff(distance_m) * (data["sim_wheel_slip_percent"][:-1] > 1.0)
+                    np.diff(distance_m)
+                    * (np.abs(data["sim_tire_driven_slip_percent"][:-1]) > 1.0)
                 )
                 / (distance_m[-1] - distance_m[0])
             ),

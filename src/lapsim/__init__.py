@@ -1,15 +1,25 @@
-"""Minimum-lap-time simulation package.
+"""Stable public facade for Formula SAE event simulation.
 
-The vehicle model imports :mod:`lapsim.controls`, so the heavier vehicle and
-solver exports are loaded lazily to keep package initialization acyclic.
+Implementation modules are grouped by responsibility.  Heavy vehicle and
+solver exports stay lazy so package initialization remains acyclic.
 """
 
-from .controls import Controls
+from .core.controls import Controls
 
 __all__ = [
     "Brakes",
     "Chassis",
     "Controls",
+    "Curve",
+    "ControlsProfile",
+    "ConstantControlsProfile",
+    "PiecewiseLinearControlsProfile",
+    "AccelerationConfig",
+    "SkidpadConfig",
+    "EventResult",
+    "simulate_acceleration",
+    "simulate_endurance",
+    "simulate_skidpad",
     "EnduranceOptimizationResult",
     "EnduranceControlProfile",
     "EnduranceRunConfig",
@@ -17,7 +27,9 @@ __all__ = [
     "EnduranceSimulator",
     "EnduranceTorqueOptimizer",
     "FSAEEnduranceEfficiencyScoring",
+    "FSAE_2026_MI_ACCELERATION_SCORING",
     "FSAE_2026_MI6_SCORING",
+    "FSAE_2026_MI_SKIDPAD_SCORING",
     "LapResult",
     "LapTimeSolver",
     "RecordedLap",
@@ -28,12 +40,18 @@ __all__ = [
     "PathSpeedConstraints",
     "PeriodicPiecewiseLinearTorqueProfile",
     "ScoreBreakdown",
+    "TimedEventScoreBreakdown",
+    "TimedEventScoring",
     "SpeedLimitMap",
     "SpeedLimitSolver",
     "Telemetry",
     "TelemetryRecorder",
     "TireNormalLoads",
     "SpatialTrack",
+    "SpatialCoordinate",
+    "Straight",
+    "Track",
+    "TorqueProfile",
     "UniformPeriodicTorqueParameterization",
     "replay_controls",
 ]
@@ -49,36 +67,77 @@ def __getattr__(name: str):
 
         return {"Chassis": Chassis, "TireNormalLoads": TireNormalLoads}[name]
     if name in {"LapResult", "LapTimeSolver"}:
-        from .lap_time_solver import LapResult, LapTimeSolver
+        from .solvers.lap_time import LapResult, LapTimeSolver
 
         return {"LapResult": LapResult, "LapTimeSolver": LapTimeSolver}[name]
     if name in {"SpeedLimitMap", "SpeedLimitSolver"}:
-        from .speed_limit_solver import SpeedLimitMap, SpeedLimitSolver
+        from .solvers.speed_limit import SpeedLimitMap, SpeedLimitSolver
 
         return {
             "SpeedLimitMap": SpeedLimitMap,
             "SpeedLimitSolver": SpeedLimitSolver,
         }[name]
     if name in {"Telemetry", "TelemetryRecorder"}:
-        from .telemetry import Telemetry, TelemetryRecorder
+        from .core.telemetry import Telemetry, TelemetryRecorder
 
         return {
             "Telemetry": Telemetry,
             "TelemetryRecorder": TelemetryRecorder,
         }[name]
+    if name in {
+        "ConstantControlsProfile",
+        "ControlsProfile",
+        "PiecewiseLinearControlsProfile",
+    }:
+        from .core.profiles import (
+            ConstantControlsProfile,
+            ControlsProfile,
+            PiecewiseLinearControlsProfile,
+        )
+
+        return {
+            "ConstantControlsProfile": ConstantControlsProfile,
+            "ControlsProfile": ControlsProfile,
+            "PiecewiseLinearControlsProfile": PiecewiseLinearControlsProfile,
+        }[name]
+    if name in {
+        "AccelerationConfig",
+        "EventResult",
+        "SkidpadConfig",
+        "simulate_acceleration",
+        "simulate_endurance",
+        "simulate_skidpad",
+    }:
+        from .events.api import (
+            AccelerationConfig,
+            EventResult,
+            SkidpadConfig,
+            simulate_acceleration,
+            simulate_endurance,
+            simulate_skidpad,
+        )
+
+        return {
+            "AccelerationConfig": AccelerationConfig,
+            "EventResult": EventResult,
+            "SkidpadConfig": SkidpadConfig,
+            "simulate_acceleration": simulate_acceleration,
+            "simulate_endurance": simulate_endurance,
+            "simulate_skidpad": simulate_skidpad,
+        }[name]
     if name == "RecordedLap":
-        from .recorded_lap import RecordedLap
+        from .data.recorded_lap import RecordedLap
 
         return RecordedLap
     if name in {"ReplayTelemetry", "replay_controls"}:
-        from .replay import ReplayTelemetry, replay_controls
+        from .data.replay import ReplayTelemetry, replay_controls
 
         return {
             "ReplayTelemetry": ReplayTelemetry,
             "replay_controls": replay_controls,
         }[name]
     if name in {"EnduranceRunConfig", "EnduranceRunResult", "EnduranceSimulator"}:
-        from .endurance import (
+        from .events.endurance import (
             EnduranceRunConfig,
             EnduranceRunResult,
             EnduranceSimulator,
@@ -90,7 +149,7 @@ def __getattr__(name: str):
             "EnduranceSimulator": EnduranceSimulator,
         }[name]
     if name in {"PathConstraintSolver", "PathSpeedConstraints"}:
-        from .path_constraints import PathConstraintSolver, PathSpeedConstraints
+        from .solvers.path_constraints import PathConstraintSolver, PathSpeedConstraints
 
         return {
             "PathConstraintSolver": PathConstraintSolver,
@@ -98,38 +157,61 @@ def __getattr__(name: str):
         }[name]
     if name in {
         "FSAEEnduranceEfficiencyScoring",
+        "FSAE_2026_MI_ACCELERATION_SCORING",
         "FSAE_2026_MI6_SCORING",
+        "FSAE_2026_MI_SKIDPAD_SCORING",
         "ScoreBreakdown",
+        "TimedEventScoreBreakdown",
+        "TimedEventScoring",
     }:
-        from .scoring import (
+        from .events.scoring import (
             FSAEEnduranceEfficiencyScoring,
+            FSAE_2026_MI_ACCELERATION_SCORING,
             FSAE_2026_MI6_SCORING,
+            FSAE_2026_MI_SKIDPAD_SCORING,
             ScoreBreakdown,
+            TimedEventScoreBreakdown,
+            TimedEventScoring,
         )
 
         return {
             "FSAEEnduranceEfficiencyScoring": FSAEEnduranceEfficiencyScoring,
+            "FSAE_2026_MI_ACCELERATION_SCORING": (
+                FSAE_2026_MI_ACCELERATION_SCORING
+            ),
             "FSAE_2026_MI6_SCORING": FSAE_2026_MI6_SCORING,
+            "FSAE_2026_MI_SKIDPAD_SCORING": FSAE_2026_MI_SKIDPAD_SCORING,
             "ScoreBreakdown": ScoreBreakdown,
+            "TimedEventScoreBreakdown": TimedEventScoreBreakdown,
+            "TimedEventScoring": TimedEventScoring,
         }[name]
-    if name == "SpatialTrack":
-        from .spatial_track import SpatialTrack
+    if name in {"Curve", "SpatialCoordinate", "SpatialTrack", "Straight", "Track"}:
+        from .courses import Curve, SpatialCoordinate, SpatialTrack, Straight, Track
 
-        return SpatialTrack
+        return {
+            "Curve": Curve,
+            "SpatialCoordinate": SpatialCoordinate,
+            "SpatialTrack": SpatialTrack,
+            "Straight": Straight,
+            "Track": Track,
+        }[name]
     if name in {
         "EnduranceControlProfile",
         "PeriodicPiecewiseLinearTorqueProfile",
+        "TorqueProfile",
         "UniformPeriodicTorqueParameterization",
     }:
-        from .torque_profile import (
+        from .optimization.torque_profile import (
             EnduranceControlProfile,
             PeriodicPiecewiseLinearTorqueProfile,
+            TorqueProfile,
             UniformPeriodicTorqueParameterization,
         )
 
         return {
             "EnduranceControlProfile": EnduranceControlProfile,
             "PeriodicPiecewiseLinearTorqueProfile": PeriodicPiecewiseLinearTorqueProfile,
+            "TorqueProfile": TorqueProfile,
             "UniformPeriodicTorqueParameterization": UniformPeriodicTorqueParameterization,
         }[name]
     if name in {
@@ -138,7 +220,7 @@ def __getattr__(name: str):
         "LocalPolishConfig",
         "OptimizationConfig",
     }:
-        from .optimizer import (
+        from .optimization.optimizer import (
             EnduranceOptimizationResult,
             EnduranceTorqueOptimizer,
             LocalPolishConfig,

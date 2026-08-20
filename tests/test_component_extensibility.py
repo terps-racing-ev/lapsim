@@ -59,6 +59,15 @@ class AsymmetricSuspension:
             rear_right_n=0.225 * total_n,
         )
 
+    def body_roll_angle_rad(
+        self,
+        mass_kg: float,
+        chassis,
+        lateral_acceleration_mps2: float,
+    ) -> float:
+        del mass_kg, chassis, lateral_acceleration_mps2
+        return 0.0
+
     def update_state(
         self,
         tire_normal_loads_n: TireNormalLoads,

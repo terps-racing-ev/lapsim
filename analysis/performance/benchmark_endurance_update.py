@@ -35,11 +35,16 @@ from unittest.mock import patch
 
 import numpy as np
 
-from lapsim.endurance import EnduranceRunConfig, EnduranceSimulator
-from lapsim.controls import Controls
-from lapsim.path_constraints import PathConstraintSolver, PathSpeedConstraints
-from lapsim.spatial_track import SpatialTrack
-from lapsim.torque_profile import TorqueProfile, UniformPeriodicTorqueParameterization
+from lapsim import (
+    Controls,
+    EnduranceRunConfig,
+    EnduranceSimulator,
+    PathConstraintSolver,
+    PathSpeedConstraints,
+    SpatialTrack,
+    TorqueProfile,
+    UniformPeriodicTorqueParameterization,
+)
 from vehicle_model import Vehicle
 
 
@@ -111,7 +116,10 @@ def track_signature(path: Path) -> dict[str, int | str]:
     stat = path.stat()
     model_files = sorted((ROOT / "src/vehicle_model").rglob("*.py"))
     model_files.extend(
-        [ROOT / "src/lapsim/controls.py", ROOT / "src/lapsim/path_constraints.py"]
+        [
+            ROOT / "src/lapsim/core/controls.py",
+            ROOT / "src/lapsim/solvers/path_constraints.py",
+        ]
     )
     model_hash = hashlib.sha256()
     for model_path in model_files:
@@ -348,7 +356,7 @@ def run_timed(
 
 def profile_category(filename: str, function_name: str) -> str:
     normalized = filename.replace("\\", "/")
-    if normalized.endswith("/lapsim/endurance.py"):
+    if normalized.endswith("/lapsim/events/endurance.py"):
         return "endurance path controller"
     if normalized.endswith("/vehicle_model/vehicle.py"):
         return "vehicle force balance and spatial integration"
@@ -362,11 +370,9 @@ def profile_category(filename: str, function_name: str) -> str:
         return "aerodynamics"
     if "/vehicle_model/electrical/" in normalized:
         return "battery/electrical"
-    if "/vehicle_model/powertrain/" in normalized or normalized.endswith(
-        "/vehicle_model/mech/wheel_slip.py"
-    ):
-        return "powertrain/wheel slip"
-    if normalized.endswith("/lapsim/torque_profile.py"):
+    if "/vehicle_model/powertrain/" in normalized:
+        return "powertrain"
+    if normalized.endswith("/lapsim/optimization/torque_profile.py"):
         return "torque-profile interpolation"
     return "Python/SciPy/runtime overhead"
 

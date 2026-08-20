@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from utils.units import meters_per_second_to_miles_per_hour
 
 if TYPE_CHECKING:
-    from .lap_time_solver import LapResult
+    from .lap_time import LapResult
 
 
 STANDARD_GRAVITY_MPS2 = 9.81

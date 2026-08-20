@@ -36,7 +36,7 @@ from analysis.common import (  # noqa: E402
     project_to_track_distance,
     read_numeric_csv,
 )
-from lapsim.spatial_track import SpatialTrack  # noqa: E402
+from lapsim import SpatialTrack  # noqa: E402
 from vehicle_model import RCTheveninBattery, Vehicle  # noqa: E402
 
 DEFAULT_CURVATURE_THRESHOLD_PER_M = 0.015

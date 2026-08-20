@@ -6,6 +6,22 @@ from vehicle_model import Brakes, Tire, Vehicle
 
 
 class BrakeParameterTests(TestCase):
+    def test_default_pressure_limit_is_applied_per_axle(self) -> None:
+        brakes = Brakes()
+        radius_m = 0.2032
+
+        self.assertEqual(brakes.maximum_pressure_psi, 300.0)
+        self.assertEqual(
+            brakes.axle_force_requests_from_pressures_n(301.0, 1_000.0, radius_m),
+            brakes.axle_force_requests_from_pressures_n(300.0, 300.0, radius_m),
+        )
+
+    def test_rejects_invalid_pressure_limit(self) -> None:
+        for invalid_limit in (0.0, -1.0, float("inf"), float("nan")):
+            with self.subTest(invalid_limit=invalid_limit):
+                with self.assertRaises(ValueError):
+                    Brakes(maximum_pressure_psi=invalid_limit)
+
     def test_axle_gains_convert_to_equivalent_vehicle_force(self) -> None:
         brakes = Brakes()
 
@@ -40,24 +56,13 @@ class BrakeParameterTests(TestCase):
         self.assertAlmostEqual(recovered_pressures_psi[0], 55.0)
         self.assertAlmostEqual(recovered_pressures_psi[1], 35.0)
 
-    def test_braking_slip_relaxation_delays_force_buildup(self) -> None:
-        brakes = Brakes(braking_slip_relaxation_length_m=2.0)
+    def test_pressure_inversion_stops_at_hardware_limit(self) -> None:
+        brakes = Brakes(pressure_force_model="firmware-force-map")
 
-        front_force, rear_force, front_slip, rear_slip = (
-            brakes.slip_limited_axle_forces_n(
-                1_000.0,
-                500.0,
-                1_000.0,
-                500.0,
-                10.0,
-                0.01,
-            )
+        self.assertEqual(
+            brakes.axle_pressures_for_force_requests_psi(1.0e6, 1.0e6, 0.2032),
+            (300.0, 300.0),
         )
-
-        self.assertLess(front_force, 1_000.0)
-        self.assertLess(rear_force, 500.0)
-        self.assertGreater(front_slip, 0.0)
-        self.assertGreater(rear_slip, 0.0)
 
     def test_constant_tire_mu_is_load_independent(self) -> None:
         tire = Tire(constant_friction_coefficient=1.8)

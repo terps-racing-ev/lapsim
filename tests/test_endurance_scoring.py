@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from unittest import TestCase
 
-from lapsim.scoring import FSAE_2026_MI6_SCORING
+from lapsim.events.scoring import FSAE_2026_MI6_SCORING
 
 
 @dataclass(frozen=True)

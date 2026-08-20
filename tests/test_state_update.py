@@ -50,6 +50,8 @@ class VehicleStateUpdateTests(TestCase):
 
         self.assertLess(vehicle.speed_mps, accelerated_speed_mps)
         self.assertGreaterEqual(vehicle.speed_mps, 0.0)
+        self.assertEqual(vehicle.brakes.current_front_pressure_psi, 300.0)
+        self.assertEqual(vehicle.brakes.current_rear_pressure_psi, 300.0)
 
         vehicle.reset_state()
         self.assertEqual(vehicle.time_s, 0.0)

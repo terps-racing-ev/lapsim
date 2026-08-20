@@ -23,7 +23,7 @@ def read_csv(path: Path) -> dict[str, np.ndarray]:
     for name in rows[0]:
         try:
             data[name] = np.asarray([float(row[name]) for row in rows], dtype=float)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
     return data
 

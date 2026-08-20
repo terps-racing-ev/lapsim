@@ -337,7 +337,7 @@ class RCTheveninBattery(OCVPackBattery):
     def validate(self) -> None:
         """Validate the base pack and RC-branch parameters."""
 
-        super().validate()
+        OCVPackBattery.validate(self)
         if self.cell_polarization_resistance_ohm <= 0:
             raise ValueError("cell_polarization_resistance_ohm must be positive")
         if self.cell_polarization_capacitance_f <= 0:
@@ -348,7 +348,7 @@ class RCTheveninBattery(OCVPackBattery):
     def reset_state(self) -> None:
         """Restore SOC and the configured initial polarization state."""
 
-        super().reset_state()
+        OCVPackBattery.reset_state(self)
         self.polarization_voltage_v = self.initial_polarization_voltage_v
         self.operating_polarization_voltage_v = self.initial_polarization_voltage_v
         self.terminal_voltage_v = (
@@ -356,7 +356,7 @@ class RCTheveninBattery(OCVPackBattery):
         )
 
     def update_telemetry(self, telemetry: dict[str, float]) -> None:
-        super().update_telemetry(telemetry)
+        OCVPackBattery.update_telemetry(self, telemetry)
         telemetry.update(
             {
                 "battery.polarization_voltage_v": (

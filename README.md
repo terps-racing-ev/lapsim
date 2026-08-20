@@ -1,7 +1,8 @@
-# Python Lap Simulator
+# Formula SAE Event Simulator
 
-Calculate a minimum-time lap around a fixed racing line, replay controls by
-track distance, and compare the model with recorded vehicle data.
+Simulate endurance, acceleration, and skidpad from a distance-indexed controls
+profile and track. Every event returns estimated points, timing, energy,
+completion status, and aligned component telemetry through one result type.
 
 The vehicle is composed from independently replaceable motor, inverter,
 chain-drive, battery, aero, chassis, suspension, tire, and brake models. The
@@ -17,6 +18,8 @@ main classes for concise imports.
 
 - [Architecture](docs/architecture.md): package boundaries, data flow, state,
   and parameter ownership.
+- [Event simulation](docs/event_simulation.md): the shared profile/track API,
+  points models, telemetry contract, and runnable analysis entry points.
 - [Extending models](docs/extending_models.md): replace a component, add state,
   and run parameter sweeps.
 - [Baseline parameters](docs/model_parameters.md): defaults and the power-flow
@@ -41,23 +44,33 @@ main classes for concise imports.
 ## Basic use
 
 ```python
-from lapsim import LapTimeSolver, SpeedLimitSolver
-from lapsim.track import Track
+from lapsim import (
+    ConstantControlsProfile,
+    Controls,
+    SpatialTrack,
+    simulate_acceleration,
+)
 from vehicle_model import Vehicle
 
-vehicle = Vehicle()
-track = Track("EV_MI_Endur.xlsx")
-
-speed_limits = SpeedLimitSolver(vehicle).solve(track)
-lap = LapTimeSolver(vehicle).solve(
-    speed_limits,
-    starting_speed_mps=10.0,
+track = SpatialTrack.from_cells(
+    cell_length_m=(0.5,) * 150,
+    curvature_per_m=(0.0,) * 150,
+    closed=False,
 )
+profile = ConstantControlsProfile(
+    Controls(motor_torque_request_nm=230.0)
+)
+result = simulate_acceleration(Vehicle(), track, profile)
 
-print(lap.starting_speed_mps)
-print(lap.lap_time_s)
-print(lap.telemetry.total_energy_kwh)
+print(result.estimated_points)
+print(result.scoring_time_s)
+print(result.telemetry["motor.speed_rpm"])
 ```
+
+Swap in `simulate_skidpad` or `simulate_endurance` without changing the
+profile, track, result, or telemetry concepts. The older speed-limit,
+minimum-lap-time, and recorded-replay APIs remain available as lower-level
+physics and validation tools.
 
 Parameters live on the component that owns them:
 
@@ -132,15 +145,14 @@ telemetry.
 
 `Vehicle.update_state(controls, distance_step_m)` advances exactly one positive
 spatial cell. It solves `v_next^2 = v^2 + 2*a*distance_step`, derives elapsed
-time internally from cell-average speed, and passes that internal time to the
-battery, drivetrain, brake, slip, suspension, tire, and aero component states.
-Motor speed is locked kinematically to vehicle speed, requested drive force is
-clipped by the rear tires' combined longitudinal/lateral force capacity, and
-rotational inertia is retained as equivalent longitudinal mass.
+time internally from cell-average speed, and passes that time to the battery,
+drivetrain, brake, suspension, tire, and aero states. The tire model resolves
+normal load, lateral force, drive/brake force, combined capacity, and slip at
+each contact patch. Motor speed follows the average driven-tire surface speed,
+and rotational inertia is retained as equivalent longitudinal mass.
 
-Explicit control sequences can be run with `lapsim.replay.replay_controls()`.
-`lapsim.recorded_lap.RecordedLap` loads the synchronized track and controls
-created by the endurance-log extractor.
+Explicit control sequences can be run with the public `replay_controls()` API.
+`RecordedLap` loads synchronized track and control data for validation.
 
 Replay telemetry is a namespaced mapping populated by the vehicle and each
 component:
@@ -183,10 +195,10 @@ $env:PYTHONPATH=(Resolve-Path src)
 .\.venv\Scripts\python.exe scripts\verify_endurance_profile.py
 ```
 
-The generic implementation lives in `lapsim.spatial_track`,
-`lapsim.path_constraints`, `lapsim.torque_profile`, `lapsim.endurance`,
-`lapsim.scoring`, and `lapsim.optimizer`. Michigan data remains confined to a
-scoring preset and the example script.
+The implementation is grouped under `lapsim.courses`, `lapsim.solvers`,
+`lapsim.events`, and `lapsim.optimization`. The root `lapsim` package is the
+stable public facade; Michigan data remains confined to scoring presets and
+analysis inputs.
 
 ## 75 m acceleration simulation
 

@@ -5,8 +5,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from lapsim.spatial_track import SpatialTrack
-from lapsim.track import Curve, Straight, Track
+from lapsim.courses.spatial_track import SpatialTrack
+from lapsim.courses.track import Curve, Straight, Track
 
 
 class SpatialTrackTests(TestCase):

@@ -2,15 +2,28 @@
 
 The code is split into two packages with different responsibilities:
 
-- `lapsim` owns tracks, controls, solvers, replay, and plotting.
+- `lapsim` owns event APIs, tracks, controls, solvers, optimization, replay,
+  and plotting.
 - `vehicle_model` owns physical parameters, component state, and force/power
   calculations.
 
 The lap solvers depend on component interfaces rather than a specific motor,
 tire, or suspension implementation.
 
+Analysis code enters through the points-producing event facade:
+`simulate_endurance`, `simulate_acceleration`, or `simulate_skidpad`. Each
+accepts a `Vehicle`, `SpatialTrack`, and `ControlsProfile` and returns the same
+`EventResult` with timing, energy, estimated points, completion status, and
+aligned component telemetry. The older limit and replay solvers remain
+lower-level physics tools rather than separate analysis contracts.
+
 ```mermaid
 flowchart LR
+    ControlsProfile --> EventSimulator
+    SpatialTrack --> EventSimulator
+    EventSimulator --> EventResult
+    EventResult --> Points
+    EventResult --> Telemetry
     Track --> SpeedLimitSolver --> SpeedLimitMap --> LapTimeSolver --> LapResult
     Vehicle --> SpeedLimitSolver
     Vehicle --> LapTimeSolver
@@ -27,9 +40,10 @@ flowchart LR
     Drivetrain --> ChainDrive
     Tire -->|"rolling radius"| Drivetrain
     Aero -->|"axle downforce"| Suspension
+    Suspension -->|"body roll"| Aero
     Chassis --> Suspension
     Suspension -->|"four normal loads"| Tire
-    Tire --> Brakes
+    Brakes -->|"four force requests"| Tire
 ```
 
 `Vehicle` is a coordinator. It does not own motor curves, aero coefficients,
@@ -79,11 +93,11 @@ evolve in seconds, but time is output state rather than the integration input.
 | `Motor` | peak/continuous torque curves, power limits, RPM limit, efficiency, rotor inertia | efficiency map, voltage dependence, thermal derating |
 | `ChainDrive` | sprocket ratio, efficiency, input/output inertia | chain loss map, compliance, sprocket selection |
 | `Drivetrain` | component coordination and driven-wheel inertia | regen coordination, coupled electrical limits |
-| `Aero` | frontal area, drag/lift coefficients, aero balance | ride-height/yaw maps, active aero, center of pressure |
-| `Chassis` | wheelbase, CG height, static weight distribution | track widths, roll centers, sprung/unsprung masses |
-| `Suspension` | longitudinal load-transfer calculation | lateral transfer, roll stiffness, springs, dampers, heave/pitch |
-| `Tire` | rolling radius, load-sensitive lateral/longitudinal coefficients, friction circle | loaded-radius model, combined slip, camber, pressure, temperature, wear |
-| `Brakes` | ideal grip-limited friction braking | hydraulic map, brake balance, thermal limits, ABS |
+| `Aero` | frontal area, drag/lift coefficients, aero balance, linear body-roll downforce loss | ride-height/yaw maps, active aero, center of pressure |
+| `Chassis` | wheelbase, track widths, CG height, static weight distribution | roll centers, sprung/unsprung masses |
+| `Suspension` | longitudinal transfer, quasi-static lateral transfer, roll stiffness and TLLTD | geometric transfer, springs, dampers, heave/pitch |
+| `Tire` | rolling radius, four-corner load-sensitive combined forces, longitudinal slip/relaxation | loaded-radius model, full combined-slip curve, temperature, wear |
+| `Brakes` | hydraulic pressure map and brake-force requests | thermal limits, ABS control |
 
 The battery boundary is the DC pack terminal. The default one-RC pack model
 computes OCV, ohmic drop, and polarization before that boundary; propulsion
@@ -113,6 +127,7 @@ one another's implementation:
 
 - `AeroForces` carries drag and front/rear downforce.
 - `TireNormalLoads` carries all four normal loads.
+- `TireStates` carries every contact patch's forces, capacities, and slip.
 - `Controls` carries driver or optimizer requests.
 
 Keep new result objects in similarly focused modules. This prevents a solver
@@ -123,13 +138,13 @@ from becoming coupled to the fields of one detailed model.
 ```text
 src/
 |-- lapsim/
-|   |-- controls.py
-|   |-- speed_limit_solver.py
-|   |-- lap_time_solver.py
-|   |-- replay.py
-|   |-- telemetry.py
-|   |-- track.py
-|   `-- plotting.py
+|   |-- __init__.py             # stable public facade
+|   |-- core/                   # controls, profiles, telemetry
+|   |-- courses/                # geometry and spatial tracks
+|   |-- events/                 # accel, skidpad, endurance, scoring
+|   |-- solvers/                # physical limits and lap-time tools
+|   |-- optimization/           # endurance profile optimization
+|   `-- data/                   # recorded-lap adapters and replay
 |-- vehicle_model/
 |   |-- interfaces.py
 |   |-- vehicle.py

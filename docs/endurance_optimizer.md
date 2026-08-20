@@ -51,6 +51,13 @@ braking when needed to stay below the path ceiling. Therefore braking is not
 an extra optimizer variable, and a profile that stays on throttle too long is
 penalized through wasted energy.
 
+The automatic controller and brake hardware default to a 300 psi front/rear
+hydraulic limit. Set `EnduranceRunConfig.maximum_brake_pressure_psi` lower for
+restricted studies. `EnduranceTorqueOptimizer`
+passes that same limit into its path-constraint solver, so the backward pass
+starts braking early enough to respect the pressure cap. When constructing a
+simulator and `PathConstraintSolver` directly, supply the same limit to both.
+
 Every objective evaluation receives a fresh `Vehicle` from a factory. This is
 required because the battery and future thermal models are stateful. Reusing a
 mutated vehicle would make candidates depend on evaluation order.
@@ -147,8 +154,8 @@ from lapsim import (
     EnduranceTorqueOptimizer,
     FSAE_2026_MI6_SCORING,
     SpatialTrack,
+    Track,
 )
-from lapsim.track import Track
 from vehicle_model import Vehicle
 
 track = SpatialTrack.from_track(

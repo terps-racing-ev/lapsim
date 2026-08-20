@@ -2,8 +2,8 @@
 
 from unittest import TestCase
 
-from lapsim.spatial_track import SpatialTrack
-from lapsim.torque_profile import UniformPeriodicTorqueParameterization
+from lapsim.courses.spatial_track import SpatialTrack
+from lapsim.optimization.torque_profile import UniformPeriodicTorqueParameterization
 
 
 class TorqueProfileTests(TestCase):

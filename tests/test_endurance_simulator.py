@@ -3,12 +3,12 @@
 from math import atan, pi
 from unittest import TestCase
 
-from lapsim.controls import Controls
-from lapsim.endurance import EnduranceRunConfig, EnduranceSimulator
-from lapsim.path_constraints import PathConstraintSolver
-from lapsim.spatial_track import SpatialTrack
-from lapsim.track import Curve, Track
-from lapsim.torque_profile import UniformPeriodicTorqueParameterization
+from lapsim.core.controls import Controls
+from lapsim.courses.spatial_track import SpatialTrack
+from lapsim.courses.track import Curve, Track
+from lapsim.events.endurance import EnduranceRunConfig, EnduranceSimulator
+from lapsim.optimization.torque_profile import UniformPeriodicTorqueParameterization
+from lapsim.solvers.path_constraints import PathConstraintSolver
 from vehicle_model import Vehicle
 
 
@@ -141,6 +141,88 @@ class EnduranceSimulatorTests(TestCase):
         assert result.failure_reason is not None
         self.assertIn("supplied controls exceeded the path ceiling", result.failure_reason)
         self.assertEqual(vehicle.current_controls, supplied_controls)
+
+    def test_torque_profile_automatically_brakes_for_path_ceiling(self) -> None:
+        track = SpatialTrack.from_cells(
+            cell_length_m=(40.0, 10.0, 40.0, 10.0),
+            curvature_per_m=(0.0, 0.1, 0.0, 0.1),
+        )
+        vehicle = Vehicle()
+        pressure_limit_psi = 100.0
+        constraints = PathConstraintSolver(
+            maximum_brake_pressure_psi=pressure_limit_psi
+        ).solve(track, vehicle)
+        profile = UniformPeriodicTorqueParameterization(2).build((1.0, 1.0), track)
+
+        result = EnduranceSimulator().run(
+            vehicle,
+            constraints,
+            profile,
+            EnduranceRunConfig(
+                laps=1,
+                maximum_brake_pressure_psi=pressure_limit_psi,
+            ),
+            record_telemetry=True,
+        )
+
+        self.assertTrue(result.completed, result.failure_reason)
+        assert result.telemetry is not None
+        self.assertTrue(
+            any(result.telemetry["endurance.path_torque_limited"])
+        )
+        self.assertTrue(
+            any(result.telemetry["endurance.path_brake_active"])
+        )
+        self.assertIn(
+            "endurance.path_brake_pressure_limited",
+            result.telemetry,
+        )
+        self.assertLessEqual(
+            max(result.telemetry["controls.front_brake_pressure_psi"]),
+            pressure_limit_psi,
+        )
+        self.assertLessEqual(
+            max(result.telemetry["controls.rear_brake_pressure_psi"]),
+            pressure_limit_psi,
+        )
+        self.assertTrue(
+            any(
+                pressure_psi > 0.0
+                for pressure_psi in result.telemetry[
+                    "controls.front_brake_pressure_psi"
+                ]
+            )
+        )
+        self.assertTrue(
+            any(
+                force_n > 0.0
+                for force_n in result.telemetry["brakes.friction_force_n"]
+            )
+        )
+        self.assertTrue(
+            all(
+                not brake_active or motor_torque_nm == 0.0
+                for brake_active, motor_torque_nm in zip(
+                    result.telemetry["endurance.path_brake_active"],
+                    result.telemetry["controls.motor_torque_request_nm"],
+                    strict=True,
+                )
+            )
+        )
+
+    def test_rejects_invalid_brake_pressure_limits(self) -> None:
+        for invalid_limit in (0.0, -1.0, float("inf"), float("nan")):
+            with self.subTest(invalid_limit=invalid_limit):
+                with self.assertRaises(ValueError):
+                    EnduranceRunConfig(maximum_brake_pressure_psi=invalid_limit)
+                with self.assertRaises(ValueError):
+                    PathConstraintSolver(
+                        maximum_brake_pressure_psi=invalid_limit
+                    )
+
+    def test_default_brake_pressure_limit_is_300_psi(self) -> None:
+        self.assertEqual(EnduranceRunConfig().maximum_brake_pressure_psi, 300.0)
+        self.assertEqual(PathConstraintSolver().maximum_brake_pressure_psi, 300.0)
 
     def test_does_not_clamp_an_unsafe_starting_speed(self) -> None:
         track = small_closed_track()

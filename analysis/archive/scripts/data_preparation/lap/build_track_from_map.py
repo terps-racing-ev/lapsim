@@ -24,7 +24,7 @@ ANALYSIS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = ANALYSIS_DIR.parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from lapsim.spatial_track import SpatialTrack  # noqa: E402
+from lapsim import SpatialTrack  # noqa: E402
 
 
 DEFAULT_MAP = ANALYSIS_DIR / "official_course_map.png"

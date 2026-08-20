@@ -10,15 +10,11 @@ from typing import Protocol, runtime_checkable
 
 from vehicle_model.vehicle import Vehicle
 
-from .controls import Controls
-from .spatial_track import SpatialTrack
+from ..core.profiles import ControlsProfile
+from ..courses.spatial_track import SpatialTrack
 
 
-@runtime_checkable
-class EnduranceControlProfile(Protocol):
-    """Distance-indexed driver controls supplied to endurance simulation."""
-
-    def controls_at(self, lap_distance_m: float) -> Controls: ...
+EnduranceControlProfile = ControlsProfile
 
 
 @runtime_checkable

@@ -2,11 +2,10 @@
 
 from .brakes import Brakes
 from .chassis import Chassis
-from .loads import TireNormalLoads
+from .loads import TireCornerValues, TireForces, TireNormalLoads
 from .pacejka import Pacejka61LateralModel
 from .suspension import Suspension
-from .tire import Tire
-from .wheel_slip import WheelSlip
+from .tire import Tire, TireState, TireStates
 
 __all__ = [
     "Brakes",
@@ -14,6 +13,9 @@ __all__ = [
     "Pacejka61LateralModel",
     "Suspension",
     "Tire",
+    "TireCornerValues",
+    "TireForces",
     "TireNormalLoads",
-    "WheelSlip",
+    "TireState",
+    "TireStates",
 ]

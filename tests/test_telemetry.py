@@ -63,8 +63,13 @@ class ComponentTelemetryTests(TestCase):
             snapshot["drivetrain.rolling_radius_m"],
             snapshot["tire.rolling_radius_m"],
         )
+        for position in ("front_left", "front_right", "rear_left", "rear_right"):
+            self.assertIn(f"tire.{position}.normal_load_n", snapshot)
+            self.assertIn(f"tire.{position}.longitudinal_force_n", snapshot)
+            self.assertIn(f"tire.{position}.lateral_force_n", snapshot)
+            self.assertIn(f"tire.{position}.slip_ratio", snapshot)
 
-    def test_corner_grip_power_cut_is_explained_by_limit_channels(self) -> None:
+    def test_corner_grip_power_reduction_is_explained_by_limit_channels(self) -> None:
         vehicle = Vehicle(initial_speed_mps=20.0)
 
         vehicle.update_state(
@@ -78,7 +83,14 @@ class ComponentTelemetryTests(TestCase):
 
         self.assertEqual(snapshot["limits.lateral_saturated"], 1.0)
         self.assertEqual(snapshot["limits.traction_active"], 1.0)
-        self.assertEqual(snapshot["drivetrain.wheel_force_n"], 0.0)
+        self.assertAlmostEqual(
+            snapshot["drivetrain.wheel_force_n"],
+            snapshot["vehicle.rear_drive_capacity_n"],
+        )
+        self.assertLess(
+            snapshot["drivetrain.wheel_force_n"],
+            snapshot["vehicle.requested_drive_force_n"],
+        )
         self.assertEqual(snapshot["battery.power_w"], 0.0)
 
     def test_replay_returns_mapping_with_component_channels(self) -> None:

@@ -2,22 +2,22 @@
 
 from unittest import TestCase
 
-from lapsim.endurance import EnduranceRunConfig
-from lapsim.optimizer import (
+from lapsim.events.endurance import EnduranceRunConfig
+from lapsim.optimization.optimizer import (
     EnduranceTorqueOptimizer,
     LocalPolishConfig,
     OptimizationConfig,
 )
-from lapsim.scoring import FSAEEnduranceEfficiencyScoring
-from lapsim.spatial_track import SpatialTrack
-from lapsim.torque_profile import UniformPeriodicTorqueParameterization
+from lapsim.events.scoring import FSAEEnduranceEfficiencyScoring
+from lapsim.courses.spatial_track import SpatialTrack
+from lapsim.optimization.torque_profile import UniformPeriodicTorqueParameterization
 from vehicle_model import Vehicle
 
 
 class EnduranceOptimizerTests(TestCase):
     def test_optimizes_injected_track_vehicle_factory_and_scoring(self) -> None:
-        # A torque-only optimizer deliberately has no automatic brake driver.
-        # Use a straight closed smoke-test path so torque alone is sufficient.
+        # Keep this smoke test straight so optimizer composition remains cheap;
+        # automatic braking behavior is covered by the simulator tests.
         track = SpatialTrack.from_cells(
             cell_length_m=(20.0, 20.0, 20.0, 20.0),
             curvature_per_m=(0.0, 0.0, 0.0, 0.0),
@@ -33,12 +33,21 @@ class EnduranceOptimizerTests(TestCase):
             efficiency_factor_maximum=0.9,
             driver_change_lap=1,
         )
+        pressure_limit_psi = 439.5
         optimizer = EnduranceTorqueOptimizer(
             vehicle_factory=Vehicle,
             track=track,
             scoring_model=scoring,
-            run_config=EnduranceRunConfig(laps=2, starting_speed_mps=5.0),
+            run_config=EnduranceRunConfig(
+                laps=2,
+                starting_speed_mps=5.0,
+                maximum_brake_pressure_psi=pressure_limit_psi,
+            ),
             parameterization=UniformPeriodicTorqueParameterization(2),
+        )
+        self.assertEqual(
+            optimizer.constraint_solver.maximum_brake_pressure_psi,
+            pressure_limit_psi,
         )
 
         result = optimizer.optimize(

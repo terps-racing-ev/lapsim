@@ -1,7 +1,7 @@
 """Aero-subteam parameters and force calculations."""
 
 from dataclasses import dataclass, field
-from math import isfinite
+from math import degrees, isfinite, radians
 
 from utils.units import square_inches_to_square_meters
 
@@ -16,6 +16,8 @@ DEFAULT_DRAG_COEFFICIENT = (
 )
 DEFAULT_LIFT_COEFFICIENT = -DEFAULT_DOWNFORCE_COEFFICIENT
 DEFAULT_FRONT_DOWNFORCE_FRACTION = 0.5269293255
+DEFAULT_ROLL_LIMIT_RAD = radians(1.0)
+DEFAULT_DOWNFORCE_RETENTION_AT_ROLL_LIMIT = 0.50
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +28,8 @@ class AeroForces:
     downforce_n: float
     front_downforce_n: float
     rear_downforce_n: float
+    downforce_multiplier: float = 1.0
+    body_roll_angle_rad: float = 0.0
 
 
 @dataclass(slots=True)
@@ -36,6 +40,10 @@ class Aero:
     drag_coefficient: float = DEFAULT_DRAG_COEFFICIENT
     lift_coefficient: float = DEFAULT_LIFT_COEFFICIENT
     front_downforce_fraction: float = DEFAULT_FRONT_DOWNFORCE_FRACTION
+    roll_limit_rad: float = DEFAULT_ROLL_LIMIT_RAD
+    downforce_retention_at_roll_limit: float = (
+        DEFAULT_DOWNFORCE_RETENTION_AT_ROLL_LIMIT
+    )
     current_forces_n: AeroForces = field(
         init=False,
         default_factory=lambda: AeroForces(0.0, 0.0, 0.0, 0.0),
@@ -55,6 +63,12 @@ class Aero:
             raise ValueError("lift_coefficient must be finite")
         if not 0 <= self.front_downforce_fraction <= 1:
             raise ValueError("front_downforce_fraction must be between 0 and 1")
+        if not isfinite(self.roll_limit_rad) or self.roll_limit_rad <= 0.0:
+            raise ValueError("roll_limit_rad must be finite and positive")
+        if not 0.0 <= self.downforce_retention_at_roll_limit <= 1.0:
+            raise ValueError(
+                "downforce_retention_at_roll_limit must be between 0 and 1"
+            )
 
     @property
     def drag_area_m2(self) -> float:
@@ -98,6 +112,14 @@ class Aero:
                 "aero.lift_coefficient": self.lift_coefficient,
                 "aero.drag_area_m2": self.drag_area_m2,
                 "aero.downforce_area_m2": self.downforce_area_m2,
+                "aero.body_roll_angle_rad": forces.body_roll_angle_rad,
+                "aero.body_roll_angle_deg": degrees(forces.body_roll_angle_rad),
+                "aero.downforce_multiplier": forces.downforce_multiplier,
+                "aero.roll_limit_rad": self.roll_limit_rad,
+                "aero.roll_limit_deg": degrees(self.roll_limit_rad),
+                "aero.downforce_retention_at_roll_limit": (
+                    self.downforce_retention_at_roll_limit
+                ),
             }
         )
 
@@ -106,6 +128,7 @@ class Aero:
         vehicle_speed_mps: float,
         air_density_kgpm3: float,
         timestep_s: float,
+        body_roll_angle_rad: float = 0.0,
     ) -> AeroForces:
         """Calculate and retain the aerodynamic forces for one timestep."""
 
@@ -114,6 +137,7 @@ class Aero:
         self.current_forces_n = self.forces_n(
             vehicle_speed_mps,
             air_density_kgpm3,
+            body_roll_angle_rad,
         )
         return self.current_forces_n
 
@@ -121,6 +145,7 @@ class Aero:
         self,
         vehicle_speed_mps: float,
         air_density_kgpm3: float,
+        body_roll_angle_rad: float = 0.0,
     ) -> AeroForces:
         """Calculate drag and axle downforce at the requested speed."""
 
@@ -128,10 +153,13 @@ class Aero:
             raise ValueError("vehicle_speed_mps cannot be negative")
         if air_density_kgpm3 <= 0:
             raise ValueError("air_density_kgpm3 must be positive")
+        if not isfinite(body_roll_angle_rad):
+            raise ValueError("body_roll_angle_rad must be finite")
 
         dynamic_pressure_pa = 0.5 * air_density_kgpm3 * vehicle_speed_mps**2
         drag_n = dynamic_pressure_pa * self.drag_coefficient * self.frontal_area_m2
-        downforce_n = (
+        downforce_multiplier = self.downforce_multiplier(body_roll_angle_rad)
+        downforce_n = downforce_multiplier * (
             -dynamic_pressure_pa * self.lift_coefficient * self.frontal_area_m2
         )
         front_downforce_n = self.front_downforce_fraction * downforce_n
@@ -141,4 +169,16 @@ class Aero:
             downforce_n=downforce_n,
             front_downforce_n=front_downforce_n,
             rear_downforce_n=rear_downforce_n,
+            downforce_multiplier=downforce_multiplier,
+            body_roll_angle_rad=body_roll_angle_rad,
+        )
+
+    def downforce_multiplier(self, body_roll_angle_rad: float) -> float:
+        """Linearly reduce downforce to the retained fraction at the roll limit."""
+
+        if not isfinite(body_roll_angle_rad):
+            raise ValueError("body_roll_angle_rad must be finite")
+        roll_fraction = min(abs(body_roll_angle_rad) / self.roll_limit_rad, 1.0)
+        return 1.0 - roll_fraction * (
+            1.0 - self.downforce_retention_at_roll_limit
         )

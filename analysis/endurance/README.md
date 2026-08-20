@@ -25,7 +25,7 @@ Important outputs:
 - `drivetrain_signals_vs_distance.png`: drivetrain comparison dashboard.
 - `acceleration_xy_vs_distance.png`: corrected IMU X/Y against simulation.
 - `front_rear_braking_vs_distance.png`: independent axle braking.
-- `wheel_slip_vs_distance.png`: simple wheel-slip model comparison.
+- `wheel_slip_vs_distance.png`: driven-tire slip derived from the four contact patches.
 - `first_lap_metrics.json`: assumptions and fit metrics.
 
 Generate the automatic corner-by-corner accuracy report after the endurance

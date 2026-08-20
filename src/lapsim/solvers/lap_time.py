@@ -6,12 +6,12 @@ from math import sqrt
 
 from vehicle_model.vehicle import Vehicle
 
-from .speed_limit_solver import (
+from .speed_limit import (
     STANDARD_AIR_DENSITY_KGPM3,
     STANDARD_GRAVITY_MPS2,
     SpeedLimitMap,
 )
-from .telemetry import Telemetry
+from ..core.telemetry import Telemetry
 
 DEFAULT_CONVERGENCE_TOLERANCE_MPS = 1e-6
 DEFAULT_MAX_PASSES = 1_000
@@ -208,9 +208,13 @@ class LapTimeSolver:
         speed_mps: float,
         curvature_per_m: float,
     ) -> float:
-        drag_force_n, rolling_force_n, _ = self._resistance_and_downforce(speed_mps)
-        aero_forces = self.vehicle.aero.forces_n(
+        drag_force_n, rolling_force_n, _ = self._resistance_and_downforce(
             speed_mps,
+            curvature_per_m,
+        )
+        aero_forces = self.vehicle.aero_forces_n(
+            speed_mps,
+            speed_mps**2 * abs(curvature_per_m),
             self.air_density_kgpm3,
         )
         tire_normal_loads = self.vehicle.suspension.tire_normal_loads_n(
@@ -294,15 +298,38 @@ class LapTimeSolver:
     def _resistance_and_downforce(
         self,
         speed_mps: float,
+        curvature_per_m: float = 0.0,
     ) -> tuple[float, float, float]:
-        aero_forces = self.vehicle.aero.forces_n(
+        aero_forces = self.vehicle.aero_forces_n(
             speed_mps,
+            speed_mps**2 * abs(curvature_per_m),
             self.air_density_kgpm3,
         )
         rolling_force_n = self.vehicle.rolling_resistance_coefficient * (
             self.vehicle.mass_kg * self.gravity_mps2 + aero_forces.downforce_n
         )
-        return aero_forces.drag_n, rolling_force_n, aero_forces.downforce_n
+        lateral_acceleration_mps2 = speed_mps**2 * abs(curvature_per_m)
+        normal_loads = self.vehicle.suspension.tire_normal_loads_n(
+            self.vehicle.mass_kg,
+            self.gravity_mps2,
+            aero_forces,
+            self.vehicle.chassis,
+            lateral_acceleration_mps2=lateral_acceleration_mps2,
+        )
+        total_normal_force_n = sum(normal_loads.all_n)
+        lateral_force_n = self.vehicle.mass_kg * lateral_acceleration_mps2
+        cornering_drag_force_n = 0.0
+        if total_normal_force_n > 0.0:
+            cornering_drag_force_n = (
+                self.vehicle.cornering_drag_coefficient
+                * lateral_force_n**2
+                / total_normal_force_n
+            )
+        return (
+            aero_forces.drag_n + cornering_drag_force_n,
+            rolling_force_n,
+            aero_forces.downforce_n,
+        )
 
     @staticmethod
     def _speed_after_distance(
@@ -372,7 +399,8 @@ class LapTimeSolver:
                 2.0 * cell_length_m
             )
             drag_force_n, rolling_force_n, _ = self._resistance_and_downforce(
-                cell_average_speed_mps
+                cell_average_speed_mps,
+                speed_limit_map.curvature_per_m[index],
             )
             requested_force_n = max(
                 0.0,

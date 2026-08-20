@@ -28,8 +28,11 @@ from .mech import (
     Pacejka61LateralModel,
     Suspension,
     Tire,
+    TireCornerValues,
+    TireForces,
     TireNormalLoads,
-    WheelSlip,
+    TireState,
+    TireStates,
 )
 from .powertrain import ChainDrive, Drivetrain, FinalDrive, Motor
 from .vehicle import Vehicle
@@ -61,8 +64,11 @@ __all__ = [
     "Suspension",
     "SuspensionModel",
     "Tire",
+    "TireCornerValues",
+    "TireForces",
     "TireModel",
     "TireNormalLoads",
+    "TireState",
+    "TireStates",
     "Vehicle",
-    "WheelSlip",
 ]

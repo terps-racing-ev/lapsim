@@ -5,10 +5,10 @@ from math import cos, isfinite, sin, sqrt, tan
 
 from scipy.optimize import brentq
 
-from lapsim.controls import Controls
+from lapsim.core.controls import Controls
 from utils.units import pounds_to_kilograms
 
-from .aero import Aero
+from .aero import Aero, AeroForces
 from .electrical import RCTheveninBattery
 from .environment import STANDARD_AIR_DENSITY_KGPM3, STANDARD_GRAVITY_MPS2
 from .interfaces import (
@@ -21,12 +21,25 @@ from .interfaces import (
     SuspensionModel,
     TireModel,
 )
-from .mech import Brakes, Chassis, Suspension, Tire, WheelSlip
+from .mech import Brakes, Chassis, Suspension, Tire, TireNormalLoads, TireStates
 from .powertrain import Drivetrain
 
 DEFAULT_MASS_LB = 675.0
 DEFAULT_MASS_KG = pounds_to_kilograms(DEFAULT_MASS_LB)
 DEFAULT_ROLLING_RESISTANCE_COEFFICIENT = 0.012
+
+
+@dataclass(frozen=True, slots=True)
+class _OperatingPoint:
+    acceleration_mps2: float
+    aero_forces: AeroForces
+    tire_states: TireStates
+    lateral_capacity_n: float
+    rear_drive_capacity_n: float
+    speed_limited_drive_force_n: float
+    cornering_drag_force_n: float
+    resistance_force_n: float
+    normal_loads_n: TireNormalLoads
 
 
 @dataclass(slots=True)
@@ -41,7 +54,6 @@ class Vehicle:
     brakes: BrakeModel = field(default_factory=Brakes)
     chassis: ChassisModel = field(default_factory=Chassis)
     suspension: SuspensionModel = field(default_factory=Suspension)
-    wheel_slip: WheelSlip = field(default_factory=WheelSlip)
 
     # Environment used by the distance-domain update_state simulation.
     gravity_mps2: float = STANDARD_GRAVITY_MPS2
@@ -105,7 +117,6 @@ class Vehicle:
             ("brakes", self.brakes, BrakeModel),
             ("chassis", self.chassis, ChassisModel),
             ("suspension", self.suspension, SuspensionModel),
-            ("wheel_slip", self.wheel_slip, ComponentModel),
         ):
             if not isinstance(component, protocol):
                 raise TypeError(f"{name} does not satisfy {protocol.__name__}")
@@ -141,7 +152,6 @@ class Vehicle:
             self.brakes,
             self.chassis,
             self.suspension,
-            self.wheel_slip,
         )
 
     @property
@@ -149,6 +159,29 @@ class Vehicle:
         """Mass accelerated longitudinally, including rotating inertia."""
 
         return self.mass_kg + self.drivetrain.equivalent_rotating_mass_kg
+
+    def aero_forces_n(
+        self,
+        speed_mps: float,
+        lateral_acceleration_mps2: float = 0.0,
+        air_density_kgpm3: float | None = None,
+    ) -> AeroForces:
+        """Return aero forces at the quasi-static body roll for this state."""
+
+        body_roll_angle_rad = self.suspension.body_roll_angle_rad(
+            self.mass_kg,
+            self.chassis,
+            lateral_acceleration_mps2,
+        )
+        return self.aero.forces_n(
+            speed_mps,
+            (
+                self.air_density_kgpm3
+                if air_density_kgpm3 is None
+                else air_density_kgpm3
+            ),
+            body_roll_angle_rad,
+        )
 
     def reset_state(self) -> None:
         """Restore every component to its configured initial state."""
@@ -201,48 +234,14 @@ class Vehicle:
         if initial_speed_mps < 0.0:
             raise RuntimeError("vehicle speed cannot be negative")
 
-        aero_forces = self.aero.forces_n(
-            initial_speed_mps,
-            self.air_density_kgpm3,
-        )
-        rolling_force_n = self.rolling_resistance_coefficient * (
-            self.mass_kg * self.gravity_mps2 + aero_forces.downforce_n
-        )
         requested_curvature_per_m = tan(controls.steering_angle_rad) / (
             self.chassis.wheelbase_m
         )
-        initial_tire_normal_loads = self.suspension.tire_normal_loads_n(
-            self.mass_kg,
-            self.gravity_mps2,
-            aero_forces,
-            self.chassis,
-            longitudinal_acceleration_mps2=self.longitudinal_acceleration_mps2,
-            lateral_acceleration_mps2=self.lateral_acceleration_mps2,
-        )
-        lateral_capacity_n = sum(
-            self.tire.lateral_force_capacity_n(normal_load_n)
-            for normal_load_n in initial_tire_normal_loads.all_n
-        )
+        curvature_sign = 1.0 if requested_curvature_per_m >= 0.0 else -1.0
         requested_lateral_force_n = (
             self.mass_kg * initial_speed_mps**2 * abs(requested_curvature_per_m)
         )
-        lateral_force_n = min(requested_lateral_force_n, lateral_capacity_n)
-        total_normal_force_n = (
-            self.mass_kg * self.gravity_mps2 + aero_forces.downforce_n
-        )
-        cornering_drag_force_n = (
-            self.cornering_drag_coefficient * lateral_force_n**2 / total_normal_force_n
-        )
-        resistance_force_n = (
-            aero_forces.drag_n + rolling_force_n + cornering_drag_force_n
-        )
-        if initial_speed_mps > 0.0:
-            curvature_sign = 1.0 if requested_curvature_per_m >= 0.0 else -1.0
-            effective_curvature_per_m = (
-                curvature_sign * lateral_force_n / (self.mass_kg * initial_speed_mps**2)
-            )
-        else:
-            effective_curvature_per_m = requested_curvature_per_m
+
 
         available_motor_torque_nm = self.drivetrain.available_motor_torque_nm(
             initial_speed_mps, self.battery
@@ -270,70 +269,76 @@ class Vehicle:
             front_brake_force_request_n + rear_brake_force_request_n
         )
 
-        def operating_point(timestep_s: float) -> tuple[float, ...]:
+        def operating_point(timestep_s: float) -> _OperatingPoint:
             def forces_at_acceleration(
                 assumed_acceleration_mps2: float,
-            ) -> tuple[float, ...]:
-                tire_normal_loads = self.suspension.tire_normal_loads_n(
-                    self.mass_kg,
-                    self.gravity_mps2,
-                    aero_forces,
-                    self.chassis,
-                    longitudinal_acceleration_mps2=assumed_acceleration_mps2,
-                    lateral_acceleration_mps2=lateral_force_n / self.mass_kg,
-                )
-                rear_lateral_force_per_tire_n = (
-                    (1.0 - self.chassis.static_front_weight_fraction)
-                    * lateral_force_n
-                    / 2.0
-                )
-                rear_drive_capacity_n = sum(
-                    self.tire.combined_longitudinal_force_capacity_n(
-                        normal_load_n, rear_lateral_force_per_tire_n
+            ) -> _OperatingPoint:
+                def lateral_loads_and_capacity(
+                    lateral_force_n: float,
+                ) -> tuple[TireNormalLoads, float, AeroForces]:
+                    lateral_acceleration_mps2 = (
+                        curvature_sign * lateral_force_n / self.mass_kg
                     )
-                    for normal_load_n in tire_normal_loads.rear_n
+                    aero_forces = self.aero_forces_n(
+                        initial_speed_mps,
+                        lateral_acceleration_mps2,
+                    )
+                    loads_n = self.suspension.tire_normal_loads_n(
+                        self.mass_kg,
+                        self.gravity_mps2,
+                        aero_forces,
+                        self.chassis,
+                        longitudinal_acceleration_mps2=assumed_acceleration_mps2,
+                        lateral_acceleration_mps2=lateral_acceleration_mps2,
+                    )
+                    capacity_n = sum(
+                        self.tire.lateral_force_capacity_n(load_n)
+                        for load_n in loads_n.all_n
+                    )
+                    return loads_n, capacity_n, aero_forces
+
+                tire_normal_loads, lateral_capacity_n, aero_forces = (
+                    lateral_loads_and_capacity(requested_lateral_force_n)
                 )
-                (
-                    front_friction_force_n,
-                    rear_friction_force_n,
-                    front_braking_capacity_n,
-                    rear_braking_capacity_n,
-                ) = self.brakes.axle_friction_forces_n(
-                    self,
-                    0.0,
+                lateral_force_n = requested_lateral_force_n
+                if lateral_force_n > lateral_capacity_n:
+                    lateral_force_n = brentq(
+                        lambda force_n: force_n
+                        - lateral_loads_and_capacity(force_n)[1],
+                        0.0,
+                        requested_lateral_force_n,
+                        xtol=1e-8,
+                    )
+                    tire_normal_loads, lateral_capacity_n, aero_forces = (
+                        lateral_loads_and_capacity(lateral_force_n)
+                    )
+                signed_lateral_force_n = curvature_sign * lateral_force_n
+                tire_states = self.tire.calculate_forces(
                     tire_normal_loads,
-                    lateral_force_n,
-                    additional_front_force_request_n=(
-                        front_friction_brake_force_request_n
-                    ),
-                    additional_rear_force_request_n=(
-                        rear_friction_brake_force_request_n
-                        + controls.rear_regenerative_brake_force_request_n
-                    ),
-                )
-                (
-                    front_friction_force_n,
-                    rear_friction_force_n,
-                    front_braking_slip_ratio,
-                    rear_braking_slip_ratio,
-                ) = self.brakes.slip_limited_axle_forces_n(
-                    front_friction_force_n,
-                    rear_friction_force_n,
-                    front_braking_capacity_n,
-                    rear_braking_capacity_n,
-                    initial_speed_mps,
+                    signed_lateral_force_n,
+                    requested_drive_force_n,
+                    front_brake_force_request_n,
+                    rear_brake_force_request_n,
+                    distance_step_m / timestep_s,
                     timestep_s,
                 )
-                friction_braking_force_n = (
-                    front_friction_force_n + rear_friction_force_n
+                cornering_drag_force_n = (
+                    self.cornering_drag_coefficient
+                    * lateral_force_n**2
+                    / (
+                        self.mass_kg * self.gravity_mps2
+                        + aero_forces.downforce_n
+                    )
                 )
-                maximum_friction_braking_force_n = (
-                    front_braking_capacity_n + rear_braking_capacity_n
+                rolling_force_n = self.rolling_resistance_coefficient * (
+                    self.mass_kg * self.gravity_mps2
+                    + aero_forces.downforce_n
                 )
-                rear_drive_capacity_n = max(
-                    0.0, rear_drive_capacity_n - rear_friction_force_n
+                resistance_force_n = (
+                    aero_forces.drag_n
+                    + rolling_force_n
+                    + cornering_drag_force_n
                 )
-                drive_force_n = min(requested_drive_force_n, rear_drive_capacity_n)
                 maximum_acceleration_to_speed_limit_mps2 = max(
                     0.0,
                     (self.drivetrain.vehicle_speed_limit_mps**2 - initial_speed_mps**2)
@@ -342,25 +347,36 @@ class Vehicle:
                 speed_limited_drive_force_n = (
                     self.effective_longitudinal_mass_kg
                     * maximum_acceleration_to_speed_limit_mps2
-                    + friction_braking_force_n
+                    + tire_states.braking_force_n
                     + resistance_force_n
                 )
-                drive_force_n = min(drive_force_n, speed_limited_drive_force_n)
+                if speed_limited_drive_force_n < requested_drive_force_n:
+                    tire_states = self.tire.calculate_forces(
+                        tire_normal_loads,
+                        signed_lateral_force_n,
+                        speed_limited_drive_force_n,
+                        front_brake_force_request_n,
+                        rear_brake_force_request_n,
+                        distance_step_m / timestep_s,
+                        timestep_s,
+                    )
                 force_balance_acceleration_mps2 = (
-                    drive_force_n - friction_braking_force_n - resistance_force_n
+                    tire_states.longitudinal_force_n - resistance_force_n
                 ) / self.effective_longitudinal_mass_kg
-                return (
-                    force_balance_acceleration_mps2,
-                    drive_force_n,
-                    rear_drive_capacity_n,
-                    speed_limited_drive_force_n,
-                    friction_braking_force_n,
-                    maximum_friction_braking_force_n,
-                    front_friction_force_n,
-                    rear_friction_force_n,
-                    front_braking_slip_ratio,
-                    rear_braking_slip_ratio,
-                    tire_normal_loads,
+                return _OperatingPoint(
+                    acceleration_mps2=force_balance_acceleration_mps2,
+                    aero_forces=aero_forces,
+                    tire_states=tire_states,
+                    lateral_capacity_n=lateral_capacity_n,
+                    rear_drive_capacity_n=max(
+                        tire_states.rear_longitudinal_capacity_n
+                        - tire_states.rear_braking_force_n,
+                        0.0,
+                    ),
+                    speed_limited_drive_force_n=speed_limited_drive_force_n,
+                    cornering_drag_force_n=cornering_drag_force_n,
+                    resistance_force_n=resistance_force_n,
+                    normal_loads_n=tire_normal_loads,
                 )
 
             lower_acceleration_mps2 = -100.0
@@ -369,7 +385,9 @@ class Vehicle:
             def force_balance_residual(assumed_acceleration_mps2: float) -> float:
                 return (
                     assumed_acceleration_mps2
-                    - forces_at_acceleration(assumed_acceleration_mps2)[0]
+                    - forces_at_acceleration(
+                        assumed_acceleration_mps2
+                    ).acceleration_mps2
                 )
 
             lower_residual = force_balance_residual(lower_acceleration_mps2)
@@ -392,7 +410,7 @@ class Vehicle:
         converged = False
         for _ in range(50):
             operating_values = operating_point(timestep_s)
-            longitudinal_acceleration_mps2 = operating_values[0]
+            longitudinal_acceleration_mps2 = operating_values.acceleration_mps2
             if initial_speed_mps == 0.0 and longitudinal_acceleration_mps2 <= 0.0:
                 raise ValueError(
                     "cannot traverse distance_step_m from rest without positive "
@@ -424,23 +442,34 @@ class Vehicle:
 
         # Evaluate once more at the converged dt, then commit all component
         # states with that same physical elapsed time.
-        (
-            longitudinal_acceleration_mps2,
-            drive_force_n,
-            rear_drive_capacity_n,
-            speed_limited_drive_force_n,
-            friction_braking_force_n,
-            maximum_friction_braking_force_n,
-            front_friction_braking_force_n,
-            rear_friction_braking_force_n,
-            front_braking_slip_ratio,
-            rear_braking_slip_ratio,
-            tire_normal_loads,
-        ) = operating_point(timestep_s)
-        aero_forces = self.aero.update_state(
-            initial_speed_mps, self.air_density_kgpm3, timestep_s
+        operating_values = operating_point(timestep_s)
+        longitudinal_acceleration_mps2 = operating_values.acceleration_mps2
+        aero_forces = operating_values.aero_forces
+        tire_states = operating_values.tire_states
+        lateral_force_n = abs(tire_states.lateral_force_n)
+        lateral_capacity_n = operating_values.lateral_capacity_n
+        rear_drive_capacity_n = operating_values.rear_drive_capacity_n
+        speed_limited_drive_force_n = operating_values.speed_limited_drive_force_n
+        cornering_drag_force_n = operating_values.cornering_drag_force_n
+        resistance_force_n = operating_values.resistance_force_n
+        rolling_force_n = (
+            resistance_force_n - aero_forces.drag_n - cornering_drag_force_n
+        )
+        tire_normal_loads = operating_values.normal_loads_n
+        drive_force_n = tire_states.drive_force_n
+        friction_braking_force_n = tire_states.braking_force_n
+        self.aero.update_state(
+            initial_speed_mps,
+            self.air_density_kgpm3,
+            timestep_s,
+            aero_forces.body_roll_angle_rad,
         )
 
+        effective_curvature_per_m = (
+            curvature_sign * lateral_force_n / (self.mass_kg * initial_speed_mps**2)
+            if initial_speed_mps > 0.0
+            else requested_curvature_per_m
+        )
         initial_heading_rad = self.heading_rad
         heading_change_rad = effective_curvature_per_m * distance_step_m
         final_heading_rad = initial_heading_rad + heading_change_rad
@@ -457,13 +486,7 @@ class Vehicle:
             self.y_m += distance_step_m * sin(initial_heading_rad)
 
         average_speed_mps = 0.5 * (initial_speed_mps + final_speed_mps)
-        self.wheel_slip.update_state(
-            average_speed_mps,
-            drive_force_n,
-            rear_drive_capacity_n,
-            timestep_s,
-        )
-        wheel_surface_speed_mps = self.wheel_slip.current_wheel_surface_speed_mps
+        wheel_surface_speed_mps = tire_states.driven_wheel_surface_speed_mps
         actual_motor_torque_nm = self.drivetrain.motor_torque_for_wheel_force_nm(
             drive_force_n
         )
@@ -487,19 +510,13 @@ class Vehicle:
             timestep_s,
             front_pressure_psi=controls.front_brake_pressure_psi,
             rear_pressure_psi=controls.rear_brake_pressure_psi,
-            front_friction_force_n=front_friction_braking_force_n,
-            rear_friction_force_n=rear_friction_braking_force_n,
-            front_braking_slip_ratio=front_braking_slip_ratio,
-            rear_braking_slip_ratio=rear_braking_slip_ratio,
+            front_friction_force_n=tire_states.front_braking_force_n,
+            rear_friction_force_n=tire_states.rear_braking_force_n,
             front_force_request_n=front_brake_force_request_n,
             rear_force_request_n=rear_brake_force_request_n,
         )
         self.suspension.update_state(tire_normal_loads, timestep_s)
-        self.tire.update_state(
-            drive_force_n - friction_braking_force_n,
-            lateral_force_n,
-            timestep_s,
-        )
+        self.tire.update_state(tire_states, timestep_s)
 
         self.time_s += timestep_s
         self.distance_m += distance_step_m
@@ -514,7 +531,7 @@ class Vehicle:
         self.requested_curvature_per_m = requested_curvature_per_m
         self.requested_lateral_force_n = requested_lateral_force_n
         self.lateral_force_capacity_n = lateral_capacity_n
-        self.current_lateral_force_n = lateral_force_n
+        self.current_lateral_force_n = tire_states.lateral_force_n
         self.available_motor_torque_nm = available_motor_torque_nm
         self.envelope_limited_motor_torque_nm = applied_motor_torque_nm
         self.requested_drive_force_n = requested_drive_force_n
@@ -522,7 +539,7 @@ class Vehicle:
         self.speed_limited_drive_force_n = speed_limited_drive_force_n
         self.current_drive_force_n = drive_force_n
         self.current_friction_braking_force_n = friction_braking_force_n
-        self.maximum_friction_braking_force_n = maximum_friction_braking_force_n
+        self.maximum_friction_braking_force_n = tire_states.longitudinal_capacity_n
         self.current_rolling_resistance_force_n = rolling_force_n
         self.current_cornering_drag_force_n = cornering_drag_force_n
         self.current_resistance_force_n = resistance_force_n
@@ -533,7 +550,7 @@ class Vehicle:
         lateral_utilization = 0.0
         if self.lateral_force_capacity_n > 0.0:
             lateral_utilization = min(
-                self.current_lateral_force_n / self.lateral_force_capacity_n,
+                abs(self.current_lateral_force_n) / self.lateral_force_capacity_n,
                 1.0,
             )
         telemetry.update(
@@ -598,7 +615,8 @@ class Vehicle:
                     self.current_drive_force_n < self.requested_drive_force_n - 1e-9
                 ),
                 "limits.lateral_saturated": float(
-                    self.current_lateral_force_n >= self.lateral_force_capacity_n - 1e-9
+                    abs(self.current_lateral_force_n)
+                    >= self.lateral_force_capacity_n - 1e-9
                     and self.requested_lateral_force_n > 0.0
                 ),
                 "limits.brake_grip_active": float(

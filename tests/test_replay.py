@@ -3,9 +3,9 @@
 from math import isclose
 from unittest import TestCase
 
-from lapsim.controls import Controls
-from lapsim.recorded_lap import RecordedLap
-from lapsim.replay import replay_controls
+from lapsim.core.controls import Controls
+from lapsim.data.recorded_lap import RecordedLap
+from lapsim.data.replay import replay_controls
 from vehicle_model.vehicle import Vehicle
 
 

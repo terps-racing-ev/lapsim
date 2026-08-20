@@ -32,9 +32,7 @@ from analysis.common import (  # noqa: E402
     project_to_track_distance,
     read_numeric_csv,
 )
-from lapsim.spatial_track import SpatialTrack  # noqa: E402
-from lapsim.spatial import SpatialCoordinate  # noqa: E402
-from lapsim.controls import Controls  # noqa: E402
+from lapsim import Controls, SpatialCoordinate, SpatialTrack  # noqa: E402
 from vehicle_model import Vehicle  # noqa: E402
 
 
@@ -482,7 +480,7 @@ def replay_lap_distance(
     brake_deadband_psi: float = 0.0,
     maximum_brake_force_request_n: float | None = None,
     negative_torque_policy: str = "error",
-    braking_slip_relaxation_length_m: float = 0.0,
+    longitudinal_slip_relaxation_length_m: float = 0.0,
     constant_tire_mu: float | None = None,
     cornering_drag_coefficient: float = 0.0,
 ) -> dict[str, np.ndarray]:
@@ -545,7 +543,9 @@ def replay_lap_distance(
     vehicle.brakes.pressure_force_model = brake_pressure_model
     vehicle.brakes.pressure_deadband_psi = brake_deadband_psi
     vehicle.brakes.maximum_force_request_n = maximum_brake_force_request_n
-    vehicle.brakes.braking_slip_relaxation_length_m = braking_slip_relaxation_length_m
+    vehicle.tire.longitudinal_slip_relaxation_length_m = (
+        longitudinal_slip_relaxation_length_m
+    )
     vehicle.tire.constant_friction_coefficient = constant_tire_mu
     vehicle.cornering_drag_coefficient = cornering_drag_coefficient
     vehicle.battery.initial_state_of_charge = min(
@@ -940,10 +940,10 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--braking-slip-relaxation-length-m",
+        "--longitudinal-slip-relaxation-length-m",
         type=float,
         default=0.0,
-        help="Zero disables transient brake-slip buildup; positive values enable it",
+        help="Zero disables transient tire-slip buildup; positive values enable it",
     )
     parser.add_argument(
         "--constant-tire-mu",
@@ -989,7 +989,7 @@ def main() -> None:
         or args.front_brake_torque_per_psi_lbfin < 0
         or args.rear_brake_torque_per_psi_lbfin < 0
         or args.brake_gain_count_per_axle <= 0
-        or args.braking_slip_relaxation_length_m < 0
+        or args.longitudinal_slip_relaxation_length_m < 0
         or (args.constant_tire_mu is not None and args.constant_tire_mu <= 0)
         or args.cornering_drag_coefficient < 0
         or (
@@ -1178,7 +1178,9 @@ def main() -> None:
             brake_deadband_psi=args.brake_deadband_psi,
             maximum_brake_force_request_n=args.maximum_brake_force_request_n,
             negative_torque_policy=args.negative_torque_policy,
-            braking_slip_relaxation_length_m=(args.braking_slip_relaxation_length_m),
+            longitudinal_slip_relaxation_length_m=(
+                args.longitudinal_slip_relaxation_length_m
+            ),
             constant_tire_mu=args.constant_tire_mu,
             cornering_drag_coefficient=args.cornering_drag_coefficient,
         )
@@ -1533,7 +1535,9 @@ def main() -> None:
             "brake_pressure_channels": (
                 "independent front VCU BSE and rear MOBO BSE indexed by station"
             ),
-            "braking_slip_relaxation_length_m": (args.braking_slip_relaxation_length_m),
+            "longitudinal_slip_relaxation_length_m": (
+                args.longitudinal_slip_relaxation_length_m
+            ),
             "constant_tire_mu": args.constant_tire_mu,
             "cornering_drag_coefficient": args.cornering_drag_coefficient,
             "maximum_brake_force_request_n": args.maximum_brake_force_request_n,

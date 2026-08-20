@@ -16,8 +16,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
-from lapsim.controls import Controls
-from lapsim.spatial_track import SpatialTrack
+from lapsim import Controls, SpatialTrack
 
 if TYPE_CHECKING:
     from vehicle_model.vehicle import Vehicle
@@ -148,7 +147,7 @@ def read_numeric_csv(path: Path) -> dict[str, np.ndarray]:
     for name in rows[0]:
         try:
             data[name] = np.asarray([float(row[name]) for row in rows], dtype=float)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
     return data
 

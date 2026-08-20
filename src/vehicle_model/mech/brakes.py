@@ -1,7 +1,7 @@
 """Mechanical-subteam braking model and deceleration calculation."""
 
 from dataclasses import dataclass, field
-from math import exp, sqrt
+from math import isfinite
 from typing import TYPE_CHECKING, Literal
 
 from scipy.optimize import brentq
@@ -9,11 +9,11 @@ from scipy.optimize import brentq
 from utils.units import pound_force_inches_to_newton_meters
 
 if TYPE_CHECKING:
-    from ..interfaces import TireModel
     from ..vehicle import Vehicle
 
 
 DEFAULT_SOLVER_TOLERANCE_MPS2 = 1e-6
+DEFAULT_MAXIMUM_BRAKE_PRESSURE_PSI = 300.0
 DEFAULT_FRONT_BRAKE_TORQUE_PER_PSI_LBFIN = 10.12849472
 DEFAULT_REAR_BRAKE_TORQUE_PER_PSI_LBFIN = 5.390972994
 
@@ -35,13 +35,12 @@ class Brakes:
     rear_torque_per_pressure_lbfin_per_psi: float = (
         DEFAULT_REAR_BRAKE_TORQUE_PER_PSI_LBFIN
     )
+    maximum_pressure_psi: float = DEFAULT_MAXIMUM_BRAKE_PRESSURE_PSI
     pressure_deadband_psi: float = 0.0
     pressure_force_model: Literal[
         "linear-hardware-gains", "firmware-force-map"
     ] = "linear-hardware-gains"
     maximum_force_request_n: float | None = None
-    braking_slip_relaxation_length_m: float = 0.0
-    peak_braking_slip_ratio: float = 0.10
     current_front_pressure_psi: float = field(init=False, default=0.0)
     current_rear_pressure_psi: float = field(init=False, default=0.0)
     current_force_request_n: float = field(init=False, default=0.0)
@@ -50,8 +49,6 @@ class Brakes:
     current_rear_force_request_n: float = field(init=False, default=0.0)
     current_front_friction_force_n: float = field(init=False, default=0.0)
     current_rear_friction_force_n: float = field(init=False, default=0.0)
-    current_front_braking_slip_ratio: float = field(init=False, default=0.0)
-    current_rear_braking_slip_ratio: float = field(init=False, default=0.0)
 
     def __post_init__(self) -> None:
         self.validate()
@@ -65,22 +62,25 @@ class Brakes:
             raise ValueError("front brake torque gain cannot be negative")
         if self.rear_torque_per_pressure_lbfin_per_psi < 0:
             raise ValueError("rear brake torque gain cannot be negative")
+        if (
+            not isfinite(self.maximum_pressure_psi)
+            or self.maximum_pressure_psi <= 0
+        ):
+            raise ValueError("maximum_pressure_psi must be finite and positive")
         if self.pressure_deadband_psi < 0:
             raise ValueError("pressure_deadband_psi cannot be negative")
         if self.pressure_force_model not in {
             "linear-hardware-gains",
             "firmware-force-map",
         }:
-            raise ValueError(f"Unknown pressure_force_model: {self.pressure_force_model}")
+            raise ValueError(
+                f"Unknown pressure_force_model: {self.pressure_force_model}"
+            )
         if (
             self.maximum_force_request_n is not None
             and self.maximum_force_request_n <= 0
         ):
             raise ValueError("maximum_force_request_n must be positive")
-        if self.braking_slip_relaxation_length_m < 0:
-            raise ValueError("braking slip relaxation length cannot be negative")
-        if not 0 < self.peak_braking_slip_ratio < 1:
-            raise ValueError("peak braking slip ratio must be in (0, 1)")
 
     @property
     def front_torque_per_pressure_nm_per_psi(self) -> float:
@@ -125,6 +125,8 @@ class Brakes:
         if rolling_radius_m <= 0:
             raise ValueError("rolling_radius_m must be positive")
 
+        front_pressure_psi = min(front_pressure_psi, self.maximum_pressure_psi)
+        rear_pressure_psi = min(rear_pressure_psi, self.maximum_pressure_psi)
         front_effective_psi = max(
             front_pressure_psi - self.pressure_deadband_psi, 0.0
         )
@@ -186,9 +188,10 @@ class Brakes:
                     raise ValueError(
                         "cannot request brake force with a zero pressure gain"
                     )
-                return (
+                return min(
                     force_n * rolling_radius_m / gain_nm_per_psi
-                    + self.pressure_deadband_psi
+                    + self.pressure_deadband_psi,
+                    self.maximum_pressure_psi,
                 )
 
             return (
@@ -200,7 +203,7 @@ class Brakes:
             if force_n <= 0.0:
                 return 0.0
             lower_psi = self.pressure_deadband_psi
-            upper_psi = max(lower_psi + 1.0, 1.0)
+            upper_psi = min(max(lower_psi + 1.0, 1.0), self.maximum_pressure_psi)
             while True:
                 forces = self.axle_force_requests_from_pressures_n(
                     upper_psi if front else 0.0,
@@ -209,9 +212,9 @@ class Brakes:
                 )
                 if forces[0 if front else 1] >= force_n:
                     break
-                upper_psi *= 2.0
-                if upper_psi > 10_000.0:
-                    raise ValueError("requested brake force is outside the pressure map")
+                if upper_psi >= self.maximum_pressure_psi:
+                    return self.maximum_pressure_psi
+                upper_psi = min(2.0 * upper_psi, self.maximum_pressure_psi)
             for _ in range(32):
                 candidate_psi = 0.5 * (lower_psi + upper_psi)
                 forces = self.axle_force_requests_from_pressures_n(
@@ -245,8 +248,6 @@ class Brakes:
         self.current_rear_force_request_n = 0.0
         self.current_front_friction_force_n = 0.0
         self.current_rear_friction_force_n = 0.0
-        self.current_front_braking_slip_ratio = 0.0
-        self.current_rear_braking_slip_ratio = 0.0
 
     def update_state(
         self,
@@ -258,8 +259,6 @@ class Brakes:
         rear_pressure_psi: float = 0.0,
         front_friction_force_n: float | None = None,
         rear_friction_force_n: float | None = None,
-        front_braking_slip_ratio: float | None = None,
-        rear_braking_slip_ratio: float | None = None,
         front_force_request_n: float | None = None,
         rear_force_request_n: float | None = None,
     ) -> None:
@@ -275,8 +274,12 @@ class Brakes:
             raise ValueError("friction_force_n cannot exceed force_request_n")
         if front_pressure_psi < 0 or rear_pressure_psi < 0:
             raise ValueError("brake pressures cannot be negative")
-        self.current_front_pressure_psi = front_pressure_psi
-        self.current_rear_pressure_psi = rear_pressure_psi
+        self.current_front_pressure_psi = min(
+            front_pressure_psi, self.maximum_pressure_psi
+        )
+        self.current_rear_pressure_psi = min(
+            rear_pressure_psi, self.maximum_pressure_psi
+        )
         self.current_force_request_n = force_request_n
         self.current_friction_force_n = friction_force_n
         front_fraction = self.front_brake_force_fraction
@@ -311,16 +314,13 @@ class Brakes:
             if rear_friction_force_n is None
             else rear_friction_force_n
         )
-        if front_braking_slip_ratio is not None:
-            self.current_front_braking_slip_ratio = front_braking_slip_ratio
-        if rear_braking_slip_ratio is not None:
-            self.current_rear_braking_slip_ratio = rear_braking_slip_ratio
 
     def update_telemetry(self, telemetry: dict[str, float]) -> None:
         telemetry.update(
             {
                 "brakes.front_pressure_psi": self.current_front_pressure_psi,
                 "brakes.rear_pressure_psi": self.current_rear_pressure_psi,
+                "brakes.maximum_pressure_psi": self.maximum_pressure_psi,
                 "brakes.force_request_n": self.current_force_request_n,
                 "brakes.friction_force_n": self.current_friction_force_n,
                 "brakes.front_force_request_n": self.current_front_force_request_n,
@@ -328,18 +328,6 @@ class Brakes:
                 "brakes.front_friction_force_n": self.current_front_friction_force_n,
                 "brakes.rear_friction_force_n": self.current_rear_friction_force_n,
                 "brakes.front_force_fraction": self.front_brake_force_fraction,
-                "brakes.front_braking_slip_ratio": (
-                    self.current_front_braking_slip_ratio
-                ),
-                "brakes.rear_braking_slip_ratio": (
-                    self.current_rear_braking_slip_ratio
-                ),
-                "brakes.front_braking_slip_percent": (
-                    100.0 * self.current_front_braking_slip_ratio
-                ),
-                "brakes.rear_braking_slip_percent": (
-                    100.0 * self.current_rear_braking_slip_ratio
-                ),
                 "brakes.force_limited": float(
                     self.current_friction_force_n < self.current_force_request_n - 1e-9
                 ),
@@ -355,111 +343,6 @@ class Brakes:
             }
         )
 
-    def axle_friction_forces_n(
-        self,
-        vehicle: "Vehicle",
-        total_force_request_n: float,
-        tire_normal_loads: object,
-        total_lateral_force_n: float,
-        *,
-        additional_front_force_request_n: float = 0.0,
-        additional_rear_force_request_n: float = 0.0,
-    ) -> tuple[float, float, float, float]:
-        """Return requested-balance axle forces after independent tire limits.
-
-        Front and rear requests follow their measured torque-per-pressure gains.
-        Each axle is then limited independently using its current normal load,
-        so forward load transfer can increase usable front braking while
-        reducing rear capacity.
-        """
-
-        front_fraction = self.front_brake_force_fraction
-        front_request_n = (
-            total_force_request_n * front_fraction + additional_front_force_request_n
-        )
-        rear_request_n = (
-            total_force_request_n * (1.0 - front_fraction)
-            + additional_rear_force_request_n
-        )
-        front_lateral_force_n = (
-            vehicle.chassis.static_front_weight_fraction * total_lateral_force_n
-        )
-        rear_lateral_force_n = total_lateral_force_n - front_lateral_force_n
-        front_capacity_n = self._axle_braking_force_n(
-            vehicle.tire, tire_normal_loads.front_n, front_lateral_force_n
-        )
-        rear_capacity_n = self._axle_braking_force_n(
-            vehicle.tire, tire_normal_loads.rear_n, rear_lateral_force_n
-        )
-        return (
-            min(front_request_n, front_capacity_n),
-            min(rear_request_n, rear_capacity_n),
-            front_capacity_n,
-            rear_capacity_n,
-        )
-
-    def slip_limited_axle_forces_n(
-        self,
-        front_quasistatic_force_n: float,
-        rear_quasistatic_force_n: float,
-        front_capacity_n: float,
-        rear_capacity_n: float,
-        vehicle_speed_mps: float,
-        timestep_s: float,
-    ) -> tuple[float, float, float, float]:
-        """Apply first-order force/slip buildup independently by axle."""
-
-        if self.braking_slip_relaxation_length_m <= 0:
-            front_slip = self.peak_braking_slip_ratio * (
-                front_quasistatic_force_n / front_capacity_n
-                if front_capacity_n > 0
-                else 0.0
-            )
-            rear_slip = self.peak_braking_slip_ratio * (
-                rear_quasistatic_force_n / rear_capacity_n
-                if rear_capacity_n > 0
-                else 0.0
-            )
-            return (
-                front_quasistatic_force_n,
-                rear_quasistatic_force_n,
-                front_slip,
-                rear_slip,
-            )
-
-        relaxation_fraction = 1.0 - exp(
-            -max(vehicle_speed_mps, 0.1)
-            * timestep_s
-            / self.braking_slip_relaxation_length_m
-        )
-
-        def axle_force(
-            quasistatic_force_n: float,
-            capacity_n: float,
-            current_slip: float,
-        ) -> tuple[float, float]:
-            utilization = (
-                min(quasistatic_force_n / capacity_n, 1.0) if capacity_n > 0 else 0.0
-            )
-            target_slip = self.peak_braking_slip_ratio * utilization
-            next_slip = current_slip + relaxation_fraction * (
-                target_slip - current_slip
-            )
-            force_n = capacity_n * min(next_slip / self.peak_braking_slip_ratio, 1.0)
-            return min(force_n, quasistatic_force_n), next_slip
-
-        front_force_n, front_slip = axle_force(
-            front_quasistatic_force_n,
-            front_capacity_n,
-            self.current_front_braking_slip_ratio,
-        )
-        rear_force_n, rear_slip = axle_force(
-            rear_quasistatic_force_n,
-            rear_capacity_n,
-            self.current_rear_braking_slip_ratio,
-        )
-        return front_force_n, rear_force_n, front_slip, rear_slip
-
     def maximum_deceleration_mps2(
         self,
         vehicle: "Vehicle",
@@ -470,17 +353,16 @@ class Brakes:
     ) -> float:
         """Return the greatest feasible positive deceleration magnitude."""
 
-        aero_forces = vehicle.aero.forces_n(speed_mps, air_density_kgpm3)
+        aero_forces = vehicle.aero_forces_n(
+            speed_mps,
+            speed_mps**2 * abs(curvature_per_m),
+            air_density_kgpm3,
+        )
         total_normal_force_n = vehicle.mass_kg * gravity_mps2 + aero_forces.downforce_n
         drag_force_n = aero_forces.drag_n
         rolling_force_n = vehicle.rolling_resistance_coefficient * total_normal_force_n
 
         total_lateral_force_n = vehicle.mass_kg * speed_mps**2 * abs(curvature_per_m)
-        front_lateral_force_n = (
-            vehicle.chassis.static_front_weight_fraction * total_lateral_force_n
-        )
-        rear_lateral_force_n = total_lateral_force_n - front_lateral_force_n
-
         def braking_residual(deceleration_mps2: float) -> float:
             tire_normal_loads = vehicle.suspension.tire_normal_loads_n(
                 vehicle.mass_kg,
@@ -490,21 +372,21 @@ class Brakes:
                 longitudinal_acceleration_mps2=-deceleration_mps2,
                 lateral_acceleration_mps2=(speed_mps**2 * abs(curvature_per_m)),
             )
-            front_braking_force_n = self._axle_braking_force_n(
-                vehicle.tire,
-                tire_normal_loads.front_n,
-                front_lateral_force_n,
+            tire_lateral_forces_n = vehicle.tire.lateral_forces_n(
+                tire_normal_loads, total_lateral_force_n
             )
-            rear_braking_force_n = self._axle_braking_force_n(
-                vehicle.tire,
-                tire_normal_loads.rear_n,
-                rear_lateral_force_n,
+            braking_force_n = sum(
+                vehicle.tire.combined_longitudinal_force_capacity_n(
+                    normal_load_n, lateral_force_n
+                )
+                for normal_load_n, lateral_force_n in zip(
+                    tire_normal_loads.all_n,
+                    tire_lateral_forces_n.all_n,
+                    strict=True,
+                )
             )
             force_limited_deceleration_mps2 = (
-                front_braking_force_n
-                + rear_braking_force_n
-                + drag_force_n
-                + rolling_force_n
+                braking_force_n + drag_force_n + rolling_force_n
             ) / vehicle.effective_longitudinal_mass_kg
             return deceleration_mps2 - force_limited_deceleration_mps2
 
@@ -526,50 +408,4 @@ class Brakes:
             0.0,
             upper_deceleration_mps2,
             xtol=self.solver_tolerance_mps2,
-        )
-
-    @classmethod
-    def _axle_braking_force_n(
-        cls,
-        tire: "TireModel",
-        tire_normal_loads_n: tuple[float, float],
-        axle_lateral_force_n: float,
-    ) -> float:
-        """Return combined braking grip for the two tires on one axle."""
-
-        lateral_force_limit_n = cls._tire_force_capacity_n(
-            tire,
-            tire_normal_loads_n,
-            lateral=True,
-        )
-        if lateral_force_limit_n <= 0:
-            return 0.0
-
-        lateral_utilization = min(
-            1.0,
-            axle_lateral_force_n / lateral_force_limit_n,
-        )
-        remaining_longitudinal_fraction = sqrt(max(0.0, 1.0 - lateral_utilization**2))
-        longitudinal_force_limit_n = cls._tire_force_capacity_n(
-            tire,
-            tire_normal_loads_n,
-            lateral=False,
-        )
-        return longitudinal_force_limit_n * remaining_longitudinal_fraction
-
-    @staticmethod
-    def _tire_force_capacity_n(
-        tire: "TireModel",
-        tire_normal_loads_n: tuple[float, ...],
-        *,
-        lateral: bool,
-    ) -> float:
-        if lateral:
-            return sum(
-                tire.lateral_force_capacity_n(normal_load_n)
-                for normal_load_n in tire_normal_loads_n
-            )
-        return sum(
-            tire.longitudinal_force_capacity_n(normal_load_n)
-            for normal_load_n in tire_normal_loads_n
         )

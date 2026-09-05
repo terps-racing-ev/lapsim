@@ -33,6 +33,7 @@ from analysis.common import (  # noqa: E402
     read_numeric_csv,
 )
 from lapsim import Controls, SpatialCoordinate, SpatialTrack  # noqa: E402
+from utils.units import pounds_to_kilograms  # noqa: E402
 from vehicle_model import Vehicle  # noqa: E402
 
 
@@ -471,18 +472,20 @@ def replay_lap_distance(
     *,
     initial_speed_mps: float,
     initial_soc_percent: float,
-    drag_coefficient: float | None = None,
-    motor_to_wheel_efficiency: float | None = None,
+    vehicle_weight_lb: float | None = 630.0,
+    drag_coefficient: float | None = 2.4,
+    motor_to_wheel_efficiency: float | None = 0.80,
+    motor_rotor_inertia_kgm2: float | None = 0.02521,
     front_brake_torque_per_psi_lbfin: float | None = None,
     rear_brake_torque_per_psi_lbfin: float | None = None,
     brake_gain_count_per_axle: float = 1.0,
-    brake_pressure_model: str = "linear-hardware-gains",
-    brake_deadband_psi: float = 0.0,
+    brake_pressure_model: str = "firmware-force-map",
+    brake_deadband_psi: float = 5.0,
     maximum_brake_force_request_n: float | None = None,
-    negative_torque_policy: str = "error",
+    negative_torque_policy: str = "rear-brake",
     longitudinal_slip_relaxation_length_m: float = 0.0,
     constant_tire_mu: float | None = None,
-    cornering_drag_coefficient: float = 0.0,
+    cornering_drag_coefficient: float = 0.036,
 ) -> dict[str, np.ndarray]:
     """Replay recorded controls by station; ``Vehicle`` derives elapsed time."""
 
@@ -520,10 +523,14 @@ def replay_lap_distance(
         }
 
     vehicle = Vehicle(initial_speed_mps=max(initial_speed_mps, 0.0))
+    if vehicle_weight_lb is not None:
+        vehicle.mass_kg = pounds_to_kilograms(vehicle_weight_lb)
     if drag_coefficient is not None:
         vehicle.aero.drag_coefficient = drag_coefficient
     if motor_to_wheel_efficiency is not None:
         vehicle.drivetrain.chain_drive.efficiency = motor_to_wheel_efficiency
+    if motor_rotor_inertia_kgm2 is not None:
+        vehicle.drivetrain.motor.rotor_inertia_kgm2 = motor_rotor_inertia_kgm2
     if front_brake_torque_per_psi_lbfin is not None:
         vehicle.brakes.front_torque_per_pressure_lbfin_per_psi = (
             brake_gain_count_per_axle * front_brake_torque_per_psi_lbfin
@@ -910,7 +917,7 @@ def main() -> None:
         default=0.0,
         help="Distance added when sampling recorded brake pressure",
     )
-    parser.add_argument("--brake-deadband-psi", type=float, default=0.0)
+    parser.add_argument("--brake-deadband-psi", type=float, default=5.0)
     parser.add_argument(
         "--front-brake-torque-per-psi-lbfin",
         type=float,
@@ -933,7 +940,7 @@ def main() -> None:
     parser.add_argument(
         "--brake-pressure-model",
         choices=("linear-hardware-gains", "firmware-force-map"),
-        default="linear-hardware-gains",
+        default="firmware-force-map",
         help=(
             "Use the supplied linear torque gains or the opt-in nonlinear "
             "front/rear force map found in TREV4-Controls"
@@ -954,7 +961,7 @@ def main() -> None:
     parser.add_argument(
         "--cornering-drag-coefficient",
         type=float,
-        default=0.0,
+        default=0.036,
         help="Tire scrub loss coefficient in F_drag = coefficient * Fy^2 / Fz",
     )
     parser.add_argument(
@@ -964,19 +971,33 @@ def main() -> None:
         help="Optional saturation cap for the pressure-derived brake-force request",
     )
     parser.add_argument(
+        "--vehicle-weight-lb",
+        type=float,
+        default=630.0,
+        help="Total vehicle weight for the recorded-control replay.",
+    )
+    parser.add_argument(
         "--drag-coefficient",
         type=float,
-        help="Optional scenario override for aerodynamic Cd.",
+        default=2.4,
+        help="Scenario aerodynamic Cd.",
     )
     parser.add_argument(
         "--motor-to-wheel-efficiency",
         type=float,
-        help="Optional scenario override for chain-drive motor-shaft-to-wheel efficiency.",
+        default=0.80,
+        help="Chain-drive motor-shaft-to-wheel efficiency.",
+    )
+    parser.add_argument(
+        "--motor-rotor-inertia-kgm2",
+        type=float,
+        default=0.02521,
+        help="Motor rotor inertia.",
     )
     parser.add_argument(
         "--negative-torque-policy",
         choices=("error", "clip", "rear-brake"),
-        default="error",
+        default="rear-brake",
         help=(
             "Reject, clip, or reflect negative motor torque to a rear-axle "
             "braking force"
@@ -992,6 +1013,7 @@ def main() -> None:
         or args.longitudinal_slip_relaxation_length_m < 0
         or (args.constant_tire_mu is not None and args.constant_tire_mu <= 0)
         or args.cornering_drag_coefficient < 0
+        or (args.vehicle_weight_lb is not None and args.vehicle_weight_lb <= 0)
         or (
             args.maximum_brake_force_request_n is not None
             and args.maximum_brake_force_request_n <= 0
@@ -1000,6 +1022,10 @@ def main() -> None:
         or (
             args.motor_to_wheel_efficiency is not None
             and not 0 < args.motor_to_wheel_efficiency <= 1
+        )
+        or (
+            args.motor_rotor_inertia_kgm2 is not None
+            and args.motor_rotor_inertia_kgm2 < 0
         )
     ):
         parser.error("GNSS lag and brake parameters cannot be negative")
@@ -1169,8 +1195,10 @@ def main() -> None:
             measured_distance_m,
             initial_speed_mps=float(measured["gnss_speed_mps"][0]),
             initial_soc_percent=float(measured["battery_soc_percent"][0]),
+            vehicle_weight_lb=args.vehicle_weight_lb,
             drag_coefficient=args.drag_coefficient,
             motor_to_wheel_efficiency=args.motor_to_wheel_efficiency,
+            motor_rotor_inertia_kgm2=args.motor_rotor_inertia_kgm2,
             front_brake_torque_per_psi_lbfin=(args.front_brake_torque_per_psi_lbfin),
             rear_brake_torque_per_psi_lbfin=args.rear_brake_torque_per_psi_lbfin,
             brake_gain_count_per_axle=args.brake_gain_count_per_axle,
@@ -1542,8 +1570,10 @@ def main() -> None:
             "cornering_drag_coefficient": args.cornering_drag_coefficient,
             "maximum_brake_force_request_n": args.maximum_brake_force_request_n,
             "negative_torque_policy": args.negative_torque_policy,
+            "vehicle_weight_lb": args.vehicle_weight_lb,
             "drag_coefficient": args.drag_coefficient,
             "motor_to_wheel_efficiency": args.motor_to_wheel_efficiency,
+            "motor_rotor_inertia_kgm2": args.motor_rotor_inertia_kgm2,
             "path_constraint": "disabled: raw recorded-control replay",
         },
         "path_controller": {

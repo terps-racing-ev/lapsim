@@ -1,5 +1,5 @@
 """Aerodynamics subteam models and force data."""
 
-from .model import Aero, AeroForces
+from .model import ActiveAero, ActiveAeroMode, Aero, AeroForces
 
-__all__ = ["Aero", "AeroForces"]
+__all__ = ["ActiveAero", "ActiveAeroMode", "Aero", "AeroForces"]

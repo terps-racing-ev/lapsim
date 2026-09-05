@@ -216,6 +216,7 @@ class LapTimeSolver:
             speed_mps,
             speed_mps**2 * abs(curvature_per_m),
             self.air_density_kgpm3,
+            curvature_per_m=curvature_per_m,
         )
         tire_normal_loads = self.vehicle.suspension.tire_normal_loads_n(
             self.vehicle.mass_kg,
@@ -304,6 +305,7 @@ class LapTimeSolver:
             speed_mps,
             speed_mps**2 * abs(curvature_per_m),
             self.air_density_kgpm3,
+            curvature_per_m=curvature_per_m,
         )
         rolling_force_n = self.vehicle.rolling_resistance_coefficient * (
             self.vehicle.mass_kg * self.gravity_mps2 + aero_forces.downforce_n

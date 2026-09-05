@@ -18,7 +18,8 @@ class DrivetrainTests(TestCase):
         self.assertTrue(isclose(drivetrain.rolling_radius_m, 0.2032))
         self.assertTrue(isclose(drivetrain.chain_drive.ratio, 3.455))
         self.assertTrue(isclose(drivetrain.motor.efficiency, 0.95963664851588))
-        self.assertTrue(isclose(drivetrain.chain_drive.efficiency, 0.776852813358272))
+        self.assertTrue(isclose(drivetrain.chain_drive.efficiency, 0.80))
+        self.assertTrue(isclose(drivetrain.motor.rotor_inertia_kgm2, 0.02521))
 
     def test_legacy_final_drive_names_alias_chain_drive(self) -> None:
         drivetrain = Drivetrain()

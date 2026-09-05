@@ -53,6 +53,12 @@ print(result.estimated_points)
 print(result.telemetry["battery.terminal_voltage_v"])
 ```
 
+Acceleration treats the supplied open track as the timed course. By default,
+`AccelerationConfig.rollout_distance_m` prepends the official 0.3 m staging
+distance. `elapsed_time_s` and `energy_kwh` cover the complete launch through
+the finish line, while `scoring_time_s` begins when the vehicle reaches the
+timing line. Set `rollout_distance_m=0.0` only for a zero-rollout comparison.
+
 The same profile/track contract is accepted by `simulate_skidpad` and
 `simulate_endurance`. Endurance additionally accepts a normalized
 `TorqueProfile` for compatibility with the torque optimizer; that path uses

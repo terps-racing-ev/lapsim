@@ -16,8 +16,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 ANALYZER = ROOT / "analysis/accel/analyze_acceleration.py"
 OUTPUT_DIR = ROOT / "analysis/accel/tuning_output"
-DEFAULT_DRAG_COEFFICIENT = 1.228784792939579
-DEFAULT_MOTOR_TO_WHEEL_EFFICIENCY = 0.8093392555676976
+DEFAULT_DRAG_COEFFICIENT = 2.4
+DEFAULT_MOTOR_TO_WHEEL_EFFICIENCY = 0.80
 PLOT_NAMES = tuple(f"straight_{number:02d}_comparison.png" for number in range(1, 6))
 RUN_LOCK = threading.Lock()
 
@@ -66,7 +66,7 @@ HTML = r"""<!doctype html>
 </header>
 <main id="plots"></main>
 <script>
-const defaults={drag:1.228784792939579,efficiency:0.8093392555676976};
+const defaults={drag:2.4,efficiency:0.80};
 const ids=['drag','eff'];
 for(const id of ids){
   const slider=document.getElementById(id+'Slider'), number=document.getElementById(id+'Number');

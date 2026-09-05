@@ -35,10 +35,6 @@ DEFAULT_OUTPUT = ROOT / "outputs/events/endurance"
 
 def calibrated_vehicle() -> Vehicle:
     vehicle = Vehicle()
-    vehicle.aero.drag_coefficient = 2.5
-    vehicle.drivetrain.chain_drive.efficiency = 0.86
-    vehicle.tire.constant_friction_coefficient = 1.8
-    vehicle.cornering_drag_coefficient = 0.036
     vehicle.battery.initial_state_of_charge = 0.9815
     vehicle.validate()
     return vehicle
@@ -67,7 +63,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--track", type=Path, default=DEFAULT_TRACK)
     parser.add_argument("--torque-fraction", type=float, default=0.26)
-    parser.add_argument("--cell-length-m", type=float, default=2.0)
+    parser.add_argument("--cell-length-m", type=float, default=1.0)
     parser.add_argument("--laps", type=int, default=22)
     parser.add_argument("--maximum-brake-pressure-psi", type=float, default=300.0)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)

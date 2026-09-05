@@ -80,6 +80,44 @@ class EventSimulationTests(TestCase):
         self.assertIn("battery.terminal_voltage_v", result.telemetry)
         self.assertIn("event.cumulative_net_energy_j", result.telemetry)
 
+    def test_acceleration_scores_after_default_rollout(self) -> None:
+        track = open_straight()
+        profile = ConstantControlsProfile(
+            Controls(motor_torque_request_nm=230.0)
+        )
+
+        with_rollout = simulate_acceleration(Vehicle(), track, profile)
+        without_rollout = simulate_acceleration(
+            Vehicle(),
+            track,
+            profile,
+            config=AccelerationConfig(rollout_distance_m=0.0),
+        )
+
+        self.assertTrue(with_rollout.completed, with_rollout.failure_reason)
+        self.assertTrue(without_rollout.completed, without_rollout.failure_reason)
+        self.assertAlmostEqual(with_rollout.distance_m, 75.3)
+        self.assertAlmostEqual(
+            with_rollout.point_breakdown["rollout_distance_m"],
+            0.3,
+        )
+        self.assertAlmostEqual(
+            with_rollout.elapsed_time_s - with_rollout.scoring_time_s,
+            with_rollout.point_breakdown["rollout_time_s"],
+        )
+        self.assertLess(
+            with_rollout.scoring_time_s,
+            without_rollout.scoring_time_s,
+        )
+        self.assertAlmostEqual(
+            without_rollout.elapsed_time_s,
+            without_rollout.scoring_time_s,
+        )
+
+    def test_acceleration_rejects_negative_rollout(self) -> None:
+        with self.assertRaises(ValueError):
+            AccelerationConfig(rollout_distance_m=-0.1)
+
     def test_skidpad_scores_only_after_warmup_and_uses_track_steering(self) -> None:
         track = closed_circle()
         result = simulate_skidpad(

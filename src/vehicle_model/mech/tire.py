@@ -7,7 +7,11 @@ from math import copysign, exp, isfinite, sqrt
 from utils.units import inches_to_meters, pounds_force_to_newtons
 
 from .loads import TireCornerValues, TireForces, TireNormalLoads
-from .pacejka import Pacejka61LateralModel
+from .pacejka import (
+    Pacejka52UpcR20LateralModel,
+    Pacejka52UpcR20LongitudinalModel,
+    Pacejka61LateralModel,
+)
 
 DEFAULT_ROLLING_RADIUS_IN = 8.0
 DEFAULT_ROLLING_RADIUS_M = inches_to_meters(DEFAULT_ROLLING_RADIUS_IN)
@@ -134,7 +138,10 @@ class Tire:
     )
     # The lookup-table lateral scale is the endurance-validated default.
     # Pacejka remains opt-in until its absolute force scale is validated.
-    pacejka_lateral: Pacejka61LateralModel | None = None
+    pacejka_lateral: (
+        Pacejka61LateralModel | Pacejka52UpcR20LateralModel | None
+    ) = None
+    pacejka_longitudinal: Pacejka52UpcR20LongitudinalModel | None = None
     camber_angle_rad: float = 0.0
     inflation_pressure_pa: float = 98_000.0
     constant_friction_coefficient: float | None = None
@@ -174,6 +181,8 @@ class Tire:
             raise ValueError("inflation_pressure_pa must be finite and positive")
         if self.pacejka_lateral is not None:
             self.pacejka_lateral.validate()
+        if self.pacejka_longitudinal is not None:
+            self.pacejka_longitudinal.validate()
         if (
             self.constant_friction_coefficient is not None
             and self.constant_friction_coefficient <= 0
@@ -197,6 +206,19 @@ class Tire:
 
     @property
     def maximum_longitudinal_coefficient(self) -> float:
+        if (
+            self.constant_friction_coefficient is None
+            and self.pacejka_longitudinal is not None
+        ):
+            reference_load_n = (
+                self.pacejka_longitudinal.nominal_load_n
+                * self.pacejka_longitudinal.nominal_load_scale
+            )
+            return self.pacejka_longitudinal.peak_force_n(
+                reference_load_n,
+                camber_angle_rad=self.camber_angle_rad,
+                inflation_pressure_pa=self.inflation_pressure_pa,
+            ) / reference_load_n
         return (
             self.constant_friction_coefficient
             if self.constant_friction_coefficient is not None
@@ -232,6 +254,10 @@ class Tire:
                 "tire.inflation_pressure_pa": self.inflation_pressure_pa,
                 "tire.pacejka_lateral_active": float(
                     self.pacejka_lateral is not None
+                    and self.constant_friction_coefficient is None
+                ),
+                "tire.pacejka_longitudinal_active": float(
+                    self.pacejka_longitudinal is not None
                     and self.constant_friction_coefficient is None
                 ),
                 "tire.constant_friction_coefficient": (
@@ -277,6 +303,10 @@ class Tire:
 
         if self.constant_friction_coefficient is not None:
             return self.constant_friction_coefficient
+        if self.pacejka_longitudinal is not None:
+            if normal_load_n <= 0.0:
+                return 0.0
+            return self.longitudinal_force_capacity_n(normal_load_n) / normal_load_n
         return self._interpolate(normal_load_n, self.longitudinal_coefficients)
 
     def lateral_force_capacity_n(self, normal_load_n: float) -> float:
@@ -320,7 +350,42 @@ class Tire:
     def longitudinal_force_capacity_n(self, normal_load_n: float) -> float:
         """Return one tire's longitudinal force capacity."""
 
+        if self.constant_friction_coefficient is None and self.pacejka_longitudinal:
+            return self.pacejka_longitudinal.peak_force_n(
+                normal_load_n,
+                camber_angle_rad=self.camber_angle_rad,
+                inflation_pressure_pa=self.inflation_pressure_pa,
+            )
         return self.longitudinal_coefficient(normal_load_n) * max(normal_load_n, 0.0)
+
+    def pure_longitudinal_force_n(
+        self,
+        normal_load_n: float,
+        slip_ratio: float,
+        *,
+        camber_angle_rad: float | None = None,
+        inflation_pressure_pa: float | None = None,
+    ) -> float:
+        """Evaluate the configured pure-longitudinal Pacejka force curve."""
+
+        if self.pacejka_longitudinal is None:
+            raise RuntimeError(
+                "pure longitudinal force requires a Pacejka longitudinal model"
+            )
+        return self.pacejka_longitudinal.force_n(
+            normal_load_n,
+            slip_ratio,
+            camber_angle_rad=(
+                self.camber_angle_rad
+                if camber_angle_rad is None
+                else camber_angle_rad
+            ),
+            inflation_pressure_pa=(
+                self.inflation_pressure_pa
+                if inflation_pressure_pa is None
+                else inflation_pressure_pa
+            ),
+        )
 
     def combined_longitudinal_force_capacity_n(
         self,

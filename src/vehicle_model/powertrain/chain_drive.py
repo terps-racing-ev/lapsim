@@ -3,9 +3,8 @@
 from dataclasses import dataclass
 
 DEFAULT_RATIO = 3.455
-# Constant motor-shaft-to-wheel efficiency inferred from brake-free,
-# positive-acceleration samples on five straights of the first endurance lap.
-DEFAULT_EFFICIENCY = 0.776852813358272
+# Current motor-shaft-to-wheel chain-efficiency baseline.
+DEFAULT_EFFICIENCY = 0.80
 DEFAULT_INPUT_INERTIA_KGM2 = 0.00005
 DEFAULT_OUTPUT_INERTIA_KGM2 = 0.003
 

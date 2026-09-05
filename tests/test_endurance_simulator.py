@@ -220,6 +220,53 @@ class EnduranceSimulatorTests(TestCase):
                         maximum_brake_pressure_psi=invalid_limit
                     )
 
+    def test_rejects_invalid_regen_soc_thresholds(self) -> None:
+        for invalid_threshold in (-0.1, 1.1, float("inf"), float("nan")):
+            with self.subTest(invalid_threshold=invalid_threshold):
+                with self.assertRaises(ValueError):
+                    EnduranceRunConfig(
+                        regenerative_braking_soc_threshold=invalid_threshold
+                    )
+
+    def test_torque_profile_uses_regen_only_below_soc_threshold(self) -> None:
+        track = SpatialTrack.from_cells(
+            cell_length_m=(40.0, 10.0, 40.0, 10.0),
+            curvature_per_m=(0.0, 0.1, 0.0, 0.1),
+        )
+        vehicle = Vehicle()
+        vehicle.battery.initial_state_of_charge = 0.79
+        vehicle.battery.max_charge_power_w = 80_000.0
+        constraints = PathConstraintSolver().solve(track, vehicle)
+        profile = UniformPeriodicTorqueParameterization(2).build((1.0, 1.0), track)
+
+        result = EnduranceSimulator().run(
+            vehicle,
+            constraints,
+            profile,
+            EnduranceRunConfig(
+                laps=1,
+                regenerative_braking_soc_threshold=0.8,
+            ),
+            record_telemetry=True,
+        )
+
+        self.assertTrue(result.completed, result.failure_reason)
+        assert result.telemetry is not None
+        self.assertTrue(
+            any(
+                force_n > 0.0
+                for force_n in result.telemetry[
+                    "controls.rear_regenerative_brake_force_request_n"
+                ]
+            )
+        )
+        self.assertTrue(
+            any(
+                power_w > 0.0
+                for power_w in result.telemetry["vehicle.regenerative_power_w"]
+            )
+        )
+
     def test_default_brake_pressure_limit_is_300_psi(self) -> None:
         self.assertEqual(EnduranceRunConfig().maximum_brake_pressure_psi, 300.0)
         self.assertEqual(PathConstraintSolver().maximum_brake_pressure_psi, 300.0)

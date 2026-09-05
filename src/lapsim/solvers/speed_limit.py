@@ -180,6 +180,7 @@ class SpeedLimitSolver:
                 candidate_speed_mps,
                 lateral_acceleration_mps2,
                 self.air_density_kgpm3,
+                curvature_per_m=curvature_per_m,
             )
             tire_normal_loads = self.vehicle.suspension.tire_normal_loads_n(
                 self.vehicle.mass_kg,

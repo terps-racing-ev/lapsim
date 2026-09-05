@@ -18,7 +18,8 @@ DEFAULT_CONTINUOUS_POWER_W = 50_000.0
 DEFAULT_MAX_SPEED_RPM = 7_000.0
 # Constant-efficiency baseline fitted from the first 2025 endurance lap.
 DEFAULT_EFFICIENCY = 0.95963664851588
-DEFAULT_ROTOR_INERTIA_KGM2 = 0.01215
+# EMRAX 228 MV datasheet rotor inertia.
+DEFAULT_ROTOR_INERTIA_KGM2 = 0.02521
 
 
 @dataclass(slots=True)

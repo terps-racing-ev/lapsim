@@ -4,19 +4,18 @@
 track and replays the complete lap by distance. Its default output is
 `analysis/endurance/output`.
 
-Run the current calibrated scenario from the repository root:
+Run the current calibrated scenario from the repository root; its parameters
+are now the command defaults:
 
 ```powershell
-.venv\Scripts\python.exe analysis\endurance\analyze_endurance.py `
-  --negative-torque-policy rear-brake `
-  --brake-pressure-model firmware-force-map `
-  --brake-deadband-psi 5 `
-  --brake-gain-count-per-axle 1 `
-  --constant-tire-mu 1.8 `
-  --cornering-drag-coefficient 0.036 `
-  --drag-coefficient 2.5 `
-  --motor-to-wheel-efficiency 0.86
+.venv\Scripts\python.exe analysis\endurance\analyze_endurance.py
 ```
+
+The calibrated scenario uses the default load-sensitive tire lookup table.
+`--constant-tire-mu` remains available only for deliberate sensitivity studies.
+The baseline uses a 630 lb total vehicle weight, Cd 2.4, 80% chain-drive
+efficiency, 0.036 cornering drag, and the EMRAX 228 MV datasheet rotor inertia
+of 0.02521 kg m^2. The tire lookup remains load-sensitive by default.
 
 Important outputs:
 

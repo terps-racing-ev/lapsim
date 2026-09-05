@@ -7,6 +7,9 @@ Only the current analysis workflows live here:
   a JSON summary and complete telemetry CSV.
 - `endurance/`: full-lap distance replay and drivetrain/acceleration plots.
 - `accel/`: straight-line distance replay and calibration utilities.
+- `aero/active_aero.py`: baseline-versus-active endurance/efficiency comparison;
+  reports time, pack energy, endurance points, efficiency points, and the
+  combined points delta.
 - `data/`: canonical recorded inputs, corrected IMU, brake channels, maps, and
   fused GNSS/IMU track.
 - `common.py`: shared recorded-data alignment and control conversion.

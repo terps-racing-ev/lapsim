@@ -8,8 +8,9 @@ source data and sign convention.
 
 | Path | Default | Meaning |
 |---|---:|---|
-| `vehicle.mass_kg` | 294.84 kg | total vehicle mass (650 lb) |
+| `vehicle.mass_kg` | 285.76 kg | total vehicle mass (630 lb) |
 | `vehicle.rolling_resistance_coefficient` | 0.012 | whole-vehicle rolling resistance |
+| `vehicle.cornering_drag_coefficient` | 0.036 | fitted tire-scrub loss coefficient in `F_drag = coefficient * Fy^2 / Fz` |
 | `tire.rolling_radius_m` | 0.2032 m | 8 in tire rolling radius |
 | `tire.inflation_pressure_pa` | 98,000 Pa | nominal pressure from the 16x7.5-10 R20 MF-Tyre fit |
 | `tire.lateral_coefficients` | 1.625 to 1.425 | baseline load-sensitive table, equal to the longitudinal coefficients |
@@ -24,10 +25,10 @@ source data and sign convention.
 | `motor.continuous_power_w` | 50 kW | continuous shaft-power reference |
 | `motor.max_speed_rpm` | 7,000 rpm | mechanical speed ceiling |
 | `motor.efficiency` | 0.95964 | constant conversion efficiency fitted from first 2025 endurance lap |
-| `motor.rotor_inertia_kgm2` | 0.01215 kg m^2 | motor rotor inertia |
+| `motor.rotor_inertia_kgm2` | 0.02521 kg m^2 | EMRAX 228 MV datasheet rotor inertia |
 | `inverter.efficiency` | 0.97 | constant baseline DC conversion efficiency |
 | `chain_drive.ratio` | 3.455 | motor speed / wheel speed |
-| `chain_drive.efficiency` | 0.776853 | motor-shaft to wheel efficiency inferred from 25 brake-free positive-acceleration samples across five straights of the first endurance lap |
+| `chain_drive.efficiency` | 0.80 | current motor-shaft to wheel chain-efficiency baseline |
 | `battery.max_discharge_power_w` | 80 kW | DC pack-terminal discharge ceiling |
 | `battery.max_charge_power_w` | 0 kW | DC pack-terminal regen ceiling |
 | `battery.series_cells / parallel_cells` | 108 / 3 | default OCV pack configuration |
@@ -36,12 +37,16 @@ source data and sign convention.
 | `battery.polarization_resistance_ohm` | 0.431980951 ohm | first-order polarization resistance R1 |
 | `battery.polarization_capacitance_f` | 10.478534 F | pack-equivalent polarization capacitance C1 |
 | `battery.polarization_time_constant_s` | 4.526527 s | R1*C1 relaxation time |
-| `aero.frontal_area_m2` | 0.65800 m^2 | 1019.902 in^2 reference frontal area |
-| `aero.drag_coefficient` | 1.22878 | drag coefficient Cd, derived from 3.62 downforce coefficient / 2.946 L/D |
-| `aero.lift_coefficient` | -3.62 | signed lift coefficient Cl; supplied positive downforce coefficient converted to SAE convention |
+| `aero.frontal_area_m2` | 0.983996414 m^2 | real car aero-package reference area |
+| `aero.drag_coefficient` | 1.60488 | current endurance-validation Cd, rescaled from 2.4 at the legacy 0.65800 m^2 reference area to preserve CdA |
+| `aero.lift_coefficient` | -2.42070 | signed Cl, rescaled from -3.62 at the legacy 0.65800 m^2 reference area to preserve ClA |
 | `aero.front_downforce_fraction` | 0.526929 | supplied fraction of downforce on the front axle |
 | `aero.roll_limit_rad` | 0.017453 rad | 1 degree absolute body-roll breakpoint |
 | `aero.downforce_retention_at_roll_limit` | 0.50 | downforce falls linearly from 100% at zero roll to 50% at the breakpoint and remains at 50% above it |
+| `ActiveAero.drag_reduction_fraction` | 0.30 | fractional drag reduction in the low-drag configuration |
+| `ActiveAero.downforce_reduction_fraction` | 0.30 | fractional downforce reduction in the low-drag configuration |
+| `ActiveAero.straight_curvature_threshold_per_m` | 0.005 1/m | automatic low-drag deployment threshold; equivalent to a 200 m minimum path radius |
+| `Vehicle.with_active_aero(...).active_aero_mass_penalty_lb` | 3.0 lb | mass added by the installed active-aero hardware |
 | `chassis.wheelbase_m` | 1.5494 m | axle-to-axle distance (61 in) |
 | `chassis.cg_height_m` | 0.2794 m | CG height (11 in) |
 | `chassis.front_track_width_m` | 1.2192 m | front track width (48 in) |
@@ -57,10 +62,43 @@ source data and sign convention.
 The motor peak and continuous torque tables live in
 `vehicle_model/powertrain/motor.py`. The baseline uses the same interpolated,
 load-sensitive coefficient table for lateral and longitudinal tire capacity.
-The pure-side-slip MF-Tyre 6.1 implementation and coefficients extracted from
-`16x7.5-10 R20 Pacejka Coefficients.mat` remain available in
-`vehicle_model/mech/pacejka.py`, but Pacejka must be enabled explicitly until
-its absolute lateral-force scale is validated.
+The original pure-side-slip MF-Tyre 6.1 implementation and coefficients
+extracted from `16x7.5-10 R20 Pacejka Coefficients.mat` remain available in
+`vehicle_model/mech/pacejka.py`. The same module now also exposes
+`Pacejka52UpcR20LateralModel` and
+`Pacejka52UpcR20LongitudinalModel`, imported from the public UPC `.tir`
+appendix for the Hoosier 16x7.5-10 R20. Configure them explicitly, together
+with the desired pressure and camber, for example:
+
+```python
+from math import radians
+
+from vehicle_model import (
+    Pacejka52UpcR20LateralModel,
+    Pacejka52UpcR20LongitudinalModel,
+    Tire,
+)
+
+tire = Tire(
+    pacejka_lateral=Pacejka52UpcR20LateralModel(),
+    pacejka_longitudinal=Pacejka52UpcR20LongitudinalModel(),
+    camber_angle_rad=radians(-1.0),
+    inflation_pressure_pa=10.0 * 6_894.757293168,
+)
+```
+
+The complete published parameter file, including longitudinal, combined-slip,
+and aligning-moment coefficients, is preserved at
+`data/tires/hoosier_16x7p5-10_r20_upc.tir`. The source is the [UPC thesis
+record](https://upcommons.upc.edu/entities/publication/ea016aa5-38ad-4bf1-a7f1-c473733153bb).
+
+The UPC file is a hybrid vehicle-model fit: its 16-inch test data supplied
+pure lateral and aligning-moment data, while longitudinal and combined-slip
+terms were carried over from another tire model. The imported lateral and
+longitudinal classes expose those published pure-slip blocks independently;
+they remain opt-in until their absolute force scales are validated. The
+`analysis/events/acceleration_points.py` entry point uses both UPC blocks by
+default with 10 psi and -1 degree camber on every wheel.
 The tire also owns the 8 in rolling radius used by drivetrain speed, torque,
 force, and reflected-inertia conversions. `drivetrain.rolling_radius_m`
 remains a compatibility alias to that same value.

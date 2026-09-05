@@ -4,7 +4,7 @@ The simulator includes a simple effective-mass model for longitudinal
 rotational inertia. The current inputs come from
 `Emrax228_Motor_Parameters.xlsx`:
 
-- Motor rotor inertia: `0.01215 kg*m^2`, at motor speed
+- Motor rotor inertia: `0.02521 kg*m^2`, at motor speed
 - Final-drive input inertia: `0.00005 kg*m^2`, at motor speed
 - Final-drive output inertia: `0.003 kg*m^2`, at wheel speed
 

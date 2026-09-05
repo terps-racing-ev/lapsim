@@ -8,7 +8,7 @@ from scipy.optimize import brentq
 from lapsim.core.controls import Controls
 from utils.units import pounds_to_kilograms
 
-from .aero import Aero, AeroForces
+from .aero import ActiveAero, Aero, AeroForces
 from .electrical import RCTheveninBattery
 from .environment import STANDARD_AIR_DENSITY_KGPM3, STANDARD_GRAVITY_MPS2
 from .interfaces import (
@@ -24,9 +24,11 @@ from .interfaces import (
 from .mech import Brakes, Chassis, Suspension, Tire, TireNormalLoads, TireStates
 from .powertrain import Drivetrain
 
-DEFAULT_MASS_LB = 675.0
+DEFAULT_MASS_LB = 630.0
 DEFAULT_MASS_KG = pounds_to_kilograms(DEFAULT_MASS_LB)
+DEFAULT_ACTIVE_AERO_MASS_PENALTY_LB = 3.0
 DEFAULT_ROLLING_RESISTANCE_COEFFICIENT = 0.012
+DEFAULT_CORNERING_DRAG_COEFFICIENT = 0.036
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +92,8 @@ class Vehicle:
     speed_limited_drive_force_n: float = field(init=False, default=0.0)
     current_drive_force_n: float = field(init=False, default=0.0)
     current_friction_braking_force_n: float = field(init=False, default=0.0)
+    current_regenerative_braking_force_n: float = field(init=False, default=0.0)
+    current_regenerative_power_w: float = field(init=False, default=0.0)
     maximum_friction_braking_force_n: float = field(init=False, default=0.0)
     current_rolling_resistance_force_n: float = field(init=False, default=0.0)
     current_cornering_drag_force_n: float = field(init=False, default=0.0)
@@ -97,11 +101,40 @@ class Vehicle:
 
     # Road resistance
     rolling_resistance_coefficient: float = DEFAULT_ROLLING_RESISTANCE_COEFFICIENT
-    cornering_drag_coefficient: float = 0.0
+    cornering_drag_coefficient: float = DEFAULT_CORNERING_DRAG_COEFFICIENT
 
     def __post_init__(self) -> None:
         self.validate()
         self.reset_state()
+
+    @classmethod
+    def with_active_aero(
+        cls,
+        *,
+        base_mass_kg: float = DEFAULT_MASS_KG,
+        active_aero_mass_penalty_lb: float = DEFAULT_ACTIVE_AERO_MASS_PENALTY_LB,
+        aero: ActiveAero | None = None,
+        **vehicle_parameters: object,
+    ) -> "Vehicle":
+        """Build a vehicle with switchable aero and its installed mass penalty."""
+
+        if not isfinite(base_mass_kg) or base_mass_kg <= 0.0:
+            raise ValueError("base_mass_kg must be finite and positive")
+        if (
+            not isfinite(active_aero_mass_penalty_lb)
+            or active_aero_mass_penalty_lb < 0.0
+        ):
+            raise ValueError(
+                "active_aero_mass_penalty_lb must be finite and nonnegative"
+            )
+        return cls(
+            mass_kg=(
+                base_mass_kg
+                + pounds_to_kilograms(active_aero_mass_penalty_lb)
+            ),
+            aero=aero if aero is not None else ActiveAero(),
+            **vehicle_parameters,
+        )
 
     def validate(self) -> None:
         """Validate the vehicle and all mutable component models."""
@@ -165,9 +198,24 @@ class Vehicle:
         speed_mps: float,
         lateral_acceleration_mps2: float = 0.0,
         air_density_kgpm3: float | None = None,
+        curvature_per_m: float | None = None,
     ) -> AeroForces:
         """Return aero forces at the quasi-static body roll for this state."""
 
+        selected_curvature_per_m = curvature_per_m
+        if selected_curvature_per_m is None:
+            selected_curvature_per_m = (
+                lateral_acceleration_mps2 / speed_mps**2
+                if speed_mps > 1e-12
+                else 0.0
+            )
+        configuration_selector = getattr(
+            self.aero,
+            "select_configuration",
+            None,
+        )
+        if callable(configuration_selector):
+            configuration_selector(selected_curvature_per_m)
         body_roll_angle_rad = self.suspension.body_roll_angle_rad(
             self.mass_kg,
             self.chassis,
@@ -209,10 +257,72 @@ class Vehicle:
         self.speed_limited_drive_force_n = 0.0
         self.current_drive_force_n = 0.0
         self.current_friction_braking_force_n = 0.0
+        self.current_regenerative_braking_force_n = 0.0
+        self.current_regenerative_power_w = 0.0
         self.maximum_friction_braking_force_n = 0.0
         self.current_rolling_resistance_force_n = 0.0
         self.current_cornering_drag_force_n = 0.0
         self.current_resistance_force_n = 0.0
+
+    @property
+    def regenerative_efficiency(self) -> float:
+        """Symmetric wheel-to-pack efficiency used by the baseline regen model."""
+
+        return (
+            self.drivetrain.chain_drive.efficiency
+            * self.drivetrain.motor.efficiency
+            * self.drivetrain.inverter.efficiency
+        )
+
+    def maximum_regenerative_brake_force_n(self, vehicle_speed_mps: float) -> float:
+        """Return rear-axle regen capacity from motor, pack, and speed limits.
+
+        Tire grip and the driver's requested deceleration are applied separately.
+        The baseline assumes the propulsion efficiencies are symmetric in the
+        generating direction.
+        """
+
+        if vehicle_speed_mps <= 0.0 or self.battery.charge_power_limit_w <= 0.0:
+            return 0.0
+        motor_speed_rpm = self.drivetrain.motor_speed_rpm(vehicle_speed_mps)
+        if motor_speed_rpm >= self.drivetrain.motor.max_speed_rpm:
+            return 0.0
+        motor_torque_limit_nm = self.drivetrain.motor.torque_limit_nm(
+            motor_speed_rpm
+        )
+        wheel_torque_limit_nm = (
+            motor_torque_limit_nm
+            * self.drivetrain.chain_drive.ratio
+            / self.drivetrain.chain_drive.efficiency
+        )
+        torque_limited_force_n = wheel_torque_limit_nm / self.tire.rolling_radius_m
+        wheel_power_limit_w = min(
+            self.drivetrain.motor.peak_power_w
+            / self.drivetrain.chain_drive.efficiency,
+            self.battery.charge_power_limit_w / self.regenerative_efficiency,
+        )
+        return min(
+            torque_limited_force_n,
+            wheel_power_limit_w / vehicle_speed_mps,
+        )
+
+    def regenerative_battery_power_w(
+        self,
+        regenerative_brake_force_n: float,
+        wheel_surface_speed_mps: float,
+    ) -> float:
+        """Return nonnegative pack-charge power recovered from rear braking."""
+
+        if regenerative_brake_force_n < 0.0:
+            raise ValueError("regenerative_brake_force_n cannot be negative")
+        if wheel_surface_speed_mps < 0.0:
+            raise ValueError("wheel_surface_speed_mps cannot be negative")
+        requested_charge_power_w = (
+            regenerative_brake_force_n
+            * wheel_surface_speed_mps
+            * self.regenerative_efficiency
+        )
+        return self.battery.limit_charge_power_w(requested_charge_power_w)
 
     def update_state(self, controls: Controls, distance_step_m: float) -> None:
         """Advance exactly one positive spatial cell.
@@ -282,6 +392,7 @@ class Vehicle:
                     aero_forces = self.aero_forces_n(
                         initial_speed_mps,
                         lateral_acceleration_mps2,
+                        curvature_per_m=requested_curvature_per_m,
                     )
                     loads_n = self.suspension.tire_normal_loads_n(
                         self.mass_kg,
@@ -457,7 +568,14 @@ class Vehicle:
         )
         tire_normal_loads = operating_values.normal_loads_n
         drive_force_n = tire_states.drive_force_n
-        friction_braking_force_n = tire_states.braking_force_n
+        regenerative_braking_force_n = min(
+            controls.rear_regenerative_brake_force_request_n,
+            tire_states.rear_braking_force_n,
+        )
+        friction_braking_force_n = max(
+            tire_states.braking_force_n - regenerative_braking_force_n,
+            0.0,
+        )
         self.aero.update_state(
             initial_speed_mps,
             self.air_density_kgpm3,
@@ -491,18 +609,23 @@ class Vehicle:
             drive_force_n
         )
         motor_speed_rpm = self.drivetrain.motor_speed_rpm(wheel_surface_speed_mps)
-        battery_power_w = self.drivetrain.positive_battery_power_w(
+        propulsion_battery_power_w = self.drivetrain.positive_battery_power_w(
             drive_force_n,
             wheel_surface_speed_mps,
             self.battery,
         )
-        self.battery.update_state(battery_power_w, timestep_s)
+        regenerative_power_w = self.regenerative_battery_power_w(
+            regenerative_braking_force_n,
+            wheel_surface_speed_mps,
+        )
+        net_battery_power_w = propulsion_battery_power_w - regenerative_power_w
+        self.battery.update_state(net_battery_power_w, timestep_s)
         self.drivetrain.update_state(
             actual_motor_torque_nm,
             motor_speed_rpm,
             drive_force_n,
             timestep_s,
-            battery_power_w,
+            propulsion_battery_power_w,
         )
         self.brakes.update_state(
             total_brake_force_request_n,
@@ -511,7 +634,10 @@ class Vehicle:
             front_pressure_psi=controls.front_brake_pressure_psi,
             rear_pressure_psi=controls.rear_brake_pressure_psi,
             front_friction_force_n=tire_states.front_braking_force_n,
-            rear_friction_force_n=tire_states.rear_braking_force_n,
+            rear_friction_force_n=max(
+                tire_states.rear_braking_force_n - regenerative_braking_force_n,
+                0.0,
+            ),
             front_force_request_n=front_brake_force_request_n,
             rear_force_request_n=rear_brake_force_request_n,
         )
@@ -539,6 +665,8 @@ class Vehicle:
         self.speed_limited_drive_force_n = speed_limited_drive_force_n
         self.current_drive_force_n = drive_force_n
         self.current_friction_braking_force_n = friction_braking_force_n
+        self.current_regenerative_braking_force_n = regenerative_braking_force_n
+        self.current_regenerative_power_w = regenerative_power_w
         self.maximum_friction_braking_force_n = tire_states.longitudinal_capacity_n
         self.current_rolling_resistance_force_n = rolling_force_n
         self.current_cornering_drag_force_n = cornering_drag_force_n
@@ -584,6 +712,10 @@ class Vehicle:
                 "vehicle.friction_braking_force_n": (
                     self.current_friction_braking_force_n
                 ),
+                "vehicle.regenerative_braking_force_n": (
+                    self.current_regenerative_braking_force_n
+                ),
+                "vehicle.regenerative_power_w": self.current_regenerative_power_w,
                 "vehicle.maximum_friction_braking_force_n": (
                     self.maximum_friction_braking_force_n
                 ),

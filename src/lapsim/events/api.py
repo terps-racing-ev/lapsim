@@ -9,7 +9,7 @@ the same :class:`EventResult` contract.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from math import atan, isfinite
+from math import atan, atan2, cos, hypot, isfinite, sin
 from statistics import fmean
 from typing import Any, Literal
 
@@ -64,11 +64,14 @@ class AccelerationConfig:
     """Numerical setup for one open acceleration course."""
 
     starting_speed_mps: float = 0.0
+    rollout_distance_m: float = 0.3
     maximum_driving_time_s: float = 30.0
 
     def __post_init__(self) -> None:
         if not isfinite(self.starting_speed_mps) or self.starting_speed_mps < 0.0:
             raise ValueError("starting_speed_mps must be finite and nonnegative")
+        if not isfinite(self.rollout_distance_m) or self.rollout_distance_m < 0.0:
+            raise ValueError("rollout_distance_m must be finite and nonnegative")
         if (
             not isfinite(self.maximum_driving_time_s)
             or self.maximum_driving_time_s <= 0.0
@@ -135,6 +138,48 @@ class _TrackSteeringProfile:
                 self.track.curvature_per_m[cell_index] * self.wheelbase_m
             ),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _DistanceOffsetControlsProfile:
+    """Keep acceleration controls indexed from the timing line."""
+
+    profile: ControlsProfile
+    offset_m: float
+
+    def controls_at(self, distance_m: float) -> Controls:
+        return self.profile.controls_at(max(distance_m - self.offset_m, 0.0))
+
+
+def _acceleration_track_with_rollout(
+    timed_track: SpatialTrack,
+    rollout_distance_m: float,
+) -> SpatialTrack:
+    """Prepend the untimed staging distance to an open timed course."""
+
+    if rollout_distance_m <= 0.0:
+        return timed_track
+    first_dx_m = timed_track.x_m[1] - timed_track.x_m[0]
+    first_dy_m = timed_track.y_m[1] - timed_track.y_m[0]
+    first_segment_m = hypot(first_dx_m, first_dy_m)
+    heading_rad = (
+        atan2(first_dy_m, first_dx_m)
+        if first_segment_m > 1e-12
+        else 0.0
+    )
+    staging_x_m = timed_track.x_m[0] - rollout_distance_m * cos(heading_rad)
+    staging_y_m = timed_track.y_m[0] - rollout_distance_m * sin(heading_rad)
+    return SpatialTrack(
+        distance_m=(0.0,)
+        + tuple(
+            rollout_distance_m + distance_m
+            for distance_m in timed_track.distance_m
+        ),
+        x_m=(staging_x_m,) + timed_track.x_m,
+        y_m=(staging_y_m,) + timed_track.y_m,
+        curvature_per_m=(0.0,) + timed_track.curvature_per_m,
+        closed=False,
+    )
 
 
 def _cell_index_at(track: SpatialTrack, distance_m: float) -> int:
@@ -257,20 +302,36 @@ def simulate_acceleration(
     if scoring.event_name != "acceleration":
         raise ValueError("acceleration requires an acceleration scoring model")
     setup = config if config is not None else AccelerationConfig()
+    event_track = _acceleration_track_with_rollout(
+        track,
+        setup.rollout_distance_m,
+    )
+    event_profile = _DistanceOffsetControlsProfile(
+        profile=_require_controls_profile(profile),
+        offset_m=setup.rollout_distance_m,
+    )
     run = _run_prescribed_path(
         vehicle,
-        track,
-        _require_controls_profile(profile),
+        event_track,
+        event_profile,
         laps=1,
         starting_speed_mps=setup.starting_speed_mps,
         maximum_driving_time_s=setup.maximum_driving_time_s,
     )
-    score = scoring.score(run.elapsed_time_s, completed=run.completed)
+    rollout_time_s = (
+        run.telemetry["vehicle.time_s"][0]
+        if setup.rollout_distance_m > 0.0 and run.telemetry.sample_count > 0
+        else 0.0
+    )
+    scoring_time_s = (
+        run.elapsed_time_s - rollout_time_s if run.completed else None
+    )
+    score = scoring.score(scoring_time_s, completed=run.completed)
     return EventResult(
         event="acceleration",
         completed=run.completed,
         elapsed_time_s=run.elapsed_time_s,
-        scoring_time_s=run.elapsed_time_s if run.completed else None,
+        scoring_time_s=scoring_time_s,
         distance_m=run.distance_m,
         energy_kwh=run.energy_kwh,
         estimated_points=score.points,
@@ -281,6 +342,10 @@ def simulate_acceleration(
         telemetry=run.telemetry,
         point_breakdown={
             "acceleration_points": score.points,
+            "rollout_distance_m": setup.rollout_distance_m,
+            "rollout_time_s": rollout_time_s,
+            "timed_course_distance_m": track.length_m,
+            "total_travel_distance_m": event_track.length_m,
             "minimum_time_s": score.minimum_time_s,
             "maximum_time_s": score.maximum_time_s,
             "time_eligible": score.time_eligible,

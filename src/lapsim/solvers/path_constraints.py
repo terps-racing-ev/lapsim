@@ -180,6 +180,7 @@ class PathConstraintSolver:
                 candidate_speed_mps,
                 lateral_acceleration_mps2,
                 self.air_density_kgpm3,
+                curvature_per_m=curvature_per_m,
             )
             tire_normal_loads = vehicle.suspension.tire_normal_loads_n(
                 vehicle.mass_kg,

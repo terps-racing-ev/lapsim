@@ -6,7 +6,7 @@ simple baseline implementations. The protocols describe the interfaces a
 higher-fidelity replacement must expose.
 """
 
-from .aero import Aero, AeroForces
+from .aero import ActiveAero, ActiveAeroMode, Aero, AeroForces
 from .electrical import Battery, Inverter, OCVPackBattery, RCTheveninBattery
 from .interfaces import (
     AeroModel,
@@ -25,6 +25,8 @@ from .interfaces import (
 from .mech import (
     Brakes,
     Chassis,
+    Pacejka52UpcR20LateralModel,
+    Pacejka52UpcR20LongitudinalModel,
     Pacejka61LateralModel,
     Suspension,
     Tire,
@@ -40,6 +42,8 @@ from .vehicle import Vehicle
 __all__ = [
     "Aero",
     "AeroForces",
+    "ActiveAero",
+    "ActiveAeroMode",
     "AeroModel",
     "Battery",
     "BatteryModel",
@@ -60,6 +64,8 @@ __all__ = [
     "InverterModel",
     "Motor",
     "MotorModel",
+    "Pacejka52UpcR20LateralModel",
+    "Pacejka52UpcR20LongitudinalModel",
     "Pacejka61LateralModel",
     "Suspension",
     "SuspensionModel",

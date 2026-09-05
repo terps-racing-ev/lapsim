@@ -4,7 +4,14 @@ from math import radians
 from unittest import TestCase
 
 from lapsim import Controls
-from vehicle_model import Pacejka61LateralModel, Tire, TireNormalLoads, Vehicle
+from vehicle_model import (
+    Pacejka52UpcR20LateralModel,
+    Pacejka52UpcR20LongitudinalModel,
+    Pacejka61LateralModel,
+    Tire,
+    TireNormalLoads,
+    Vehicle,
+)
 
 
 class PacejkaLateralTests(TestCase):
@@ -40,6 +47,67 @@ class PacejkaLateralTests(TestCase):
                 inflation_pressure_pa=90_000.0,
             ),
             -1839.778929099007,
+        )
+
+    def test_upc_r20_published_lateral_model_is_available(self) -> None:
+        model = Pacejka52UpcR20LateralModel()
+
+        model.validate()
+        self.assertAlmostEqual(model.nominal_load_n, 1_000.0)
+        self.assertAlmostEqual(model.nominal_pressure_pa, 82_737.0)
+        self.assertAlmostEqual(model.pcy1, 1.477553032924075)
+        self.assertAlmostEqual(model.pdy1, 2.419662634889429)
+        self.assertEqual(model.horizontal_shift_scale, 0.0)
+        self.assertAlmostEqual(
+            model.force_n(
+                800.0,
+                radians(5.0),
+                inflation_pressure_pa=model.nominal_pressure_pa,
+            ),
+            -1512.8752072737998,
+        )
+
+        tire = Tire(
+            pacejka_lateral=model,
+            inflation_pressure_pa=model.nominal_pressure_pa,
+        )
+        self.assertGreater(tire.lateral_force_capacity_n(800.0), 0.0)
+
+    def test_upc_r20_published_longitudinal_model_is_available(self) -> None:
+        model = Pacejka52UpcR20LongitudinalModel()
+        pressure_pa = 10.0 * 6_894.757293168
+        camber_rad = radians(-1.0)
+
+        model.validate()
+        self.assertAlmostEqual(model.nominal_load_n, 1_000.0)
+        self.assertAlmostEqual(model.nominal_pressure_pa, 82_737.0)
+        self.assertAlmostEqual(model.pdx1, 2.85110165444411)
+        self.assertAlmostEqual(
+            model.peak_force_n(
+                800.0,
+                camber_angle_rad=camber_rad,
+                inflation_pressure_pa=pressure_pa,
+            ),
+            1_852.9587197960823,
+        )
+        tire = Tire(
+            pacejka_longitudinal=model,
+            camber_angle_rad=camber_rad,
+            inflation_pressure_pa=pressure_pa,
+        )
+        self.assertAlmostEqual(
+            tire.longitudinal_force_capacity_n(800.0),
+            model.peak_force_n(
+                800.0,
+                camber_angle_rad=camber_rad,
+                inflation_pressure_pa=pressure_pa,
+            ),
+        )
+        telemetry: dict[str, float] = {}
+        tire.update_telemetry(telemetry)
+        self.assertAlmostEqual(
+            telemetry["tire.pacejka_longitudinal_active"],
+            1.0,
         )
 
     def test_peak_coefficient_decreases_with_load(self) -> None:

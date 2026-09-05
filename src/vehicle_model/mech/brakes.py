@@ -357,6 +357,7 @@ class Brakes:
             speed_mps,
             speed_mps**2 * abs(curvature_per_m),
             air_density_kgpm3,
+            curvature_per_m=curvature_per_m,
         )
         total_normal_force_n = vehicle.mass_kg * gravity_mps2 + aero_forces.downforce_n
         drag_force_n = aero_forces.drag_n

@@ -192,10 +192,12 @@ source, numerical resolution, seed, and optimizer budget for reproducibility.
 The output is model-optimal, not a predicted competition score. The default
 vehicle was calibrated using the same first competition lap, so this event is
 not independent validation. The current model omits wheel slip, yaw dynamics,
-road grade, thermal derating, auxiliary power, and regenerative braking. The
-same torque profile repeats every lap, although electrical state evolves
-continuously. Driver-change stopped time and battery relaxation are not yet
-modeled.
+road grade, thermal derating, and auxiliary power. Regenerative braking can be
+enabled below a configurable SOC threshold; recovered battery power is limited
+by the rear-tire force, motor torque and power, pack charge power, and symmetric
+chain/motor/inverter efficiency. The same torque profile repeats every lap,
+although electrical state evolves continuously. Driver-change stopped time and
+battery relaxation are not yet modeled.
 
 Before using a profile on the car, validate held-out laps, add the missing
 limits that can bind in endurance, and run finer spatial and optimizer-budget

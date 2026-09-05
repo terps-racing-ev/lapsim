@@ -93,7 +93,7 @@ evolve in seconds, but time is output state rather than the integration input.
 | `Motor` | peak/continuous torque curves, power limits, RPM limit, efficiency, rotor inertia | efficiency map, voltage dependence, thermal derating |
 | `ChainDrive` | sprocket ratio, efficiency, input/output inertia | chain loss map, compliance, sprocket selection |
 | `Drivetrain` | component coordination and driven-wheel inertia | regen coordination, coupled electrical limits |
-| `Aero` | frontal area, drag/lift coefficients, aero balance, linear body-roll downforce loss | ride-height/yaw maps, active aero, center of pressure |
+| `Aero` / `ActiveAero` | frontal area, drag/lift coefficients, aero balance, linear body-roll downforce loss, switchable straight-line low-drag configuration | ride-height/yaw maps, actuator dynamics, center of pressure |
 | `Chassis` | wheelbase, track widths, CG height, static weight distribution | roll centers, sprung/unsprung masses |
 | `Suspension` | longitudinal transfer, quasi-static lateral transfer, roll stiffness and TLLTD | geometric transfer, springs, dampers, heave/pitch |
 | `Tire` | rolling radius, four-corner load-sensitive combined forces, longitudinal slip/relaxation | loaded-radius model, full combined-slip curve, temperature, wear |

@@ -8,9 +8,12 @@ Run from the repository root:
 
 ```powershell
 .venv\Scripts\python.exe analysis\accel\analyze_acceleration.py `
-  --motor-to-wheel-efficiency 0.86 `
+  --motor-to-wheel-efficiency 0.80 `
   --negative-torque-policy clip
 ```
+
+The shared vehicle baseline uses 80% chain-drive efficiency and the EMRAX 228
+MV rotor inertia of 0.02521 kg m^2.
 
 Supporting tools:
 

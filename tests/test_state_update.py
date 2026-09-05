@@ -8,6 +8,16 @@ from vehicle_model.vehicle import Vehicle
 
 
 class VehicleStateUpdateTests(TestCase):
+    def test_current_vehicle_parameters_are_the_defaults(self) -> None:
+        vehicle = Vehicle()
+
+        self.assertTrue(isclose(vehicle.mass_kg, 285.7631931))
+        self.assertEqual(vehicle.aero.drag_coefficient, 2.4)
+        self.assertEqual(vehicle.drivetrain.chain_drive.efficiency, 0.80)
+        self.assertEqual(vehicle.drivetrain.motor.rotor_inertia_kgm2, 0.02521)
+        self.assertEqual(vehicle.cornering_drag_coefficient, 0.036)
+        self.assertIsNone(vehicle.tire.constant_friction_coefficient)
+
     def test_spatial_braking_converges_independently_of_previous_acceleration(
         self,
     ) -> None:
@@ -142,6 +152,22 @@ class VehicleStateUpdateTests(TestCase):
         self.assertEqual(vehicle.brakes.current_force_request_n, 700.0)
         self.assertEqual(vehicle.brakes.current_front_force_request_n, 400.0)
         self.assertEqual(vehicle.brakes.current_rear_force_request_n, 300.0)
+
+    def test_regen_returns_energy_to_charge_enabled_battery(self) -> None:
+        vehicle = Vehicle(initial_speed_mps=10.0)
+        vehicle.battery.initial_state_of_charge = 0.5
+        vehicle.battery.max_charge_power_w = 80_000.0
+        vehicle.reset_state()
+        initial_soc = vehicle.battery.state_of_charge
+
+        vehicle.update_state(
+            Controls(rear_regenerative_brake_force_request_n=500.0),
+            0.1,
+        )
+
+        self.assertLess(vehicle.battery.current_power_w, 0.0)
+        self.assertGreater(vehicle.current_regenerative_power_w, 0.0)
+        self.assertGreater(vehicle.battery.state_of_charge, initial_soc)
 
     def test_cornering_drag_adds_speed_dependent_tire_scrub_loss(self) -> None:
         baseline = Vehicle(initial_speed_mps=15.0)

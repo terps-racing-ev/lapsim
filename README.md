@@ -78,10 +78,29 @@ Parameters live on the component that owns them:
 vehicle.drivetrain.motor.peak_power_w = 60_000.0
 vehicle.drivetrain.inverter.efficiency = 0.96
 vehicle.drivetrain.chain_drive.ratio = 4.1
-vehicle.aero.frontal_area_m2 = 0.658
-vehicle.aero.drag_coefficient = 1.0
-vehicle.aero.lift_coefficient = -2.82
+vehicle.aero.frontal_area_m2 = 0.983996414
+vehicle.aero.drag_coefficient = 1.6048838348
+vehicle.aero.lift_coefficient = -2.4206997842
 vehicle.validate()
+```
+
+The active-aero model has automatic straight-line deployment plus forced
+positions for switching and fail-safe studies. The vehicle factory includes
+the installed-system mass penalty:
+
+```python
+from vehicle_model import ActiveAero, Vehicle
+
+vehicle = Vehicle.with_active_aero(
+    active_aero_mass_penalty_lb=3.0,
+    aero=ActiveAero(
+        drag_reduction_fraction=0.30,
+        downforce_reduction_fraction=0.30,
+        straight_curvature_threshold_per_m=0.005,
+    ),
+)
+vehicle.aero.set_deployment_mode("automatic")
+# Alternatives: "low_drag" or "high_downforce".
 ```
 
 To add a detailed model, supply an object implementing the corresponding

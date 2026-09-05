@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--real-lap", type=Path, default=DEFAULT_REAL_LAP)
     parser.add_argument("--track", type=Path, default=DEFAULT_TRACK)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--cell-length-m", type=float, default=2.0)
+    parser.add_argument("--cell-length-m", type=float, default=1.0)
     parser.add_argument("--torque-fraction", type=float, default=0.26)
     parser.add_argument("--maximum-brake-pressure-psi", type=float, default=300.0)
     return parser.parse_args()
@@ -86,10 +86,6 @@ def coarsen_track(source: SpatialTrack, target_cell_length_m: float) -> SpatialT
 
 def vehicle_factory() -> Vehicle:
     vehicle = Vehicle()
-    vehicle.aero.drag_coefficient = 2.5
-    vehicle.drivetrain.chain_drive.efficiency = 0.86
-    vehicle.tire.constant_friction_coefficient = 1.8
-    vehicle.cornering_drag_coefficient = 0.036
     vehicle.battery.initial_state_of_charge = 0.9815
     vehicle.validate()
     return vehicle

@@ -137,7 +137,7 @@ class PacejkaLateralTests(TestCase):
         )
         self.assertAlmostEqual(tire.longitudinal_coefficient(1080.0), 1.43220634145)
 
-    def test_default_tire_uses_upc_models_at_90_percent(self) -> None:
+    def test_default_tire_uses_upc_models_at_80_percent(self) -> None:
         tire = Tire()
 
         self.assertIsInstance(tire.pacejka_lateral, Pacejka52UpcR20LateralModel)
@@ -145,7 +145,7 @@ class PacejkaLateralTests(TestCase):
             tire.pacejka_longitudinal, Pacejka52UpcR20LongitudinalModel
         )
         for model in (tire.pacejka_lateral, tire.pacejka_longitudinal):
-            self.assertEqual(model.correlation_factor, 0.90)
+            self.assertEqual(model.correlation_factor, 0.80)
             published = replace(model, correlation_factor=1.0)
             for load_n in (500.0, 800.0, 1200.0):
                 for camber_deg in (-2.0, 0.0, 2.0):
@@ -160,18 +160,18 @@ class PacejkaLateralTests(TestCase):
                         ):
                             self.assertAlmostEqual(
                                 model.peak_force_n(load_n, **kwargs),
-                                0.90 * published.peak_force_n(load_n, **kwargs),
+                                0.80 * published.peak_force_n(load_n, **kwargs),
                             )
                             for slip in (-0.1, 0.0, 0.1):
                                 self.assertAlmostEqual(
                                     model.force_n(load_n, slip, **kwargs),
-                                    0.90 * published.force_n(load_n, slip, **kwargs),
+                                    0.80 * published.force_n(load_n, slip, **kwargs),
                                 )
 
         telemetry: dict[str, float] = {}
         tire.update_telemetry(telemetry)
-        self.assertEqual(telemetry["tire.lateral_correlation_factor"], 0.90)
-        self.assertEqual(telemetry["tire.longitudinal_correlation_factor"], 0.90)
+        self.assertEqual(telemetry["tire.lateral_correlation_factor"], 0.80)
+        self.assertEqual(telemetry["tire.longitudinal_correlation_factor"], 0.80)
 
     def test_upc_models_reject_invalid_correlation_factors(self) -> None:
         for model_class in (

@@ -15,7 +15,7 @@ source data and sign convention.
 | `tire.inflation_pressure_pa` | 98,000 Pa | default operating pressure; the UPC fit's nominal reference is 82,737 Pa |
 | `tire.pacejka_lateral` | `Pacejka52UpcR20LateralModel` | default load-sensitive pure-lateral UPC MF-Tyre 5.2 model |
 | `tire.pacejka_longitudinal` | `Pacejka52UpcR20LongitudinalModel` | default load-sensitive pure-longitudinal UPC MF-Tyre 5.2 model |
-| `tire.pacejka_lateral.correlation_factor / pacejka_longitudinal.correlation_factor` | 0.90 | scales each complete published force curve and peak capacity to 90%, including fitted offsets |
+| `tire.pacejka_lateral.correlation_factor / pacejka_longitudinal.correlation_factor` | 0.80 | scales each complete published force curve and peak capacity to 80%, including fitted offsets |
 | `tire.lateral_coefficients` | 1.625 to 1.425 | fallback lateral-capacity table when Pacejka is disabled |
 | `alignment.anti_ackermann_fraction` | 1.0 | parallel steer at 0; ideal anti-Ackermann at 1, with the outside front wheel taking the larger angle |
 | `alignment.front_toe_in_angle_rad / rear_toe_in_angle_rad` | 0 rad | symmetric per-wheel toe; positive means toe-in |
@@ -109,7 +109,7 @@ The motor peak and continuous torque tables live in
 `vehicle_model/powertrain/motor.py`. The baseline tire uses
 `Pacejka52UpcR20LateralModel` and `Pacejka52UpcR20LongitudinalModel`, imported
 from the public UPC `.tir` appendix for the Hoosier 16x7.5-10 R20, with both
-complete force curves and peak capacities scaled to 90%. This output scaling
+complete force curves and peak capacities scaled to 80%. This output scaling
 preserves the fitted slip positions and load, pressure, and camber dependence.
 Their implementations and coefficients live in `mech/pacejka52_lateral.py`
 and `mech/pacejka52_longitudinal.py`, respectively. Set `correlation_factor=1.0`
@@ -163,7 +163,7 @@ The UPC file is a hybrid vehicle-model fit: its 16-inch test data supplied
 pure lateral and aligning-moment data, while longitudinal and combined-slip
 terms were carried over from another tire model. The imported lateral and
 longitudinal classes expose those published pure-slip blocks independently,
-with the default 0.90 correlation factors applied to their outputs. The
+with the default 0.80 correlation factors applied to their outputs. The
 `analysis/events/acceleration_points.py` entry point uses both UPC blocks by
 default with 10 psi and -1 degree camber on every wheel.
 The tire owns the 8 in rolling radius used by drivetrain speed, torque, force,

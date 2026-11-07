@@ -22,7 +22,7 @@ class Pacejka52UpcR20LateralModel:
 
     Angles are radians, pressure is absolute pascals, and normal load is the
     positive force carried by one tire in newtons.
-    Outputs default to 90% of the published fit; use
+    Outputs default to 80% of the published fit; use
     ``correlation_factor=1.0`` for the original force curve and capacity.
     """
 
@@ -30,7 +30,7 @@ class Pacejka52UpcR20LateralModel:
     nominal_load_n: float = 1_000.0  # FNOMIN
     nominal_pressure_pa: float = 82_737.0  # NOMPRES
     # Scale the complete published force curve, including fitted offsets.
-    correlation_factor: float = 0.90
+    correlation_factor: float = 0.80
 
     # [LATERAL_COEFFICIENTS]
     pcy1: float = 1.477553032924075

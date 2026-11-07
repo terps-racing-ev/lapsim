@@ -169,7 +169,7 @@ telemetry.
 `Vehicle.update_state(controls, timestep_s)` advances exactly one positive time
 step. Steering sets the individual front-wheel angles. Body sideslip, yaw
 rate, and each wheel's position produce four local velocities and slip angles,
-which feed the default UPC Pacejka tire models, scaled to 90% of their published
+which feed the default UPC Pacejka tire models, scaled to 80% of their published
 lateral and longitudinal forces. The solver iterates acceleration,
 body sideslip, and curvature against force and steady yaw-moment balance, so
 curvature is an output of the tire forces. It integrates

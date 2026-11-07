@@ -1,0 +1,17 @@
+metric,value
+measurement,inverter_plus_motor_dc_to_shaft
+dc_power_source,CAN1.HVC_IO_Summary.HVC_Pack_Power_kW
+hvc_power_lag_s,0.090000
+minimum_power_w,1000.00
+energy_weighted_efficiency,0.973287
+energy_weighted_efficiency_percent,97.329
+motoring_energy_weighted_efficiency,0.980118
+regenerating_energy_weighted_efficiency,0.778377
+mean_instantaneous_efficiency,0.898011
+median_instantaneous_efficiency,0.935351
+mean_conversion_loss_w,1254.93
+valid_samples,1641
+motoring_samples,1482
+regenerating_samples,159
+directionally_aligned_samples,2579
+total_resampled_samples,12156

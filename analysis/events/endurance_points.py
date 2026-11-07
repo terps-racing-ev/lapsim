@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -65,6 +66,13 @@ def main() -> None:
     parser.add_argument("--torque-fraction", type=float, default=0.26)
     parser.add_argument("--cell-length-m", type=float, default=1.0)
     parser.add_argument("--laps", type=int, default=22)
+    parser.add_argument(
+        "--minimum-soc", type=float, default=0.0,
+        help="Stop at this SOC fraction (0.2 retains a 20%% reserve).",
+    )
+    parser.add_argument("--initial-soc", type=float, default=0.9815)
+    parser.add_argument("--speed-cap-mps", type=float)
+    parser.add_argument("--path-speed-tolerance-mps", type=float, default=0.01)
     parser.add_argument("--maximum-brake-pressure-psi", type=float, default=300.0)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
@@ -76,16 +84,31 @@ def main() -> None:
         (args.torque_fraction,) * 8,
         track,
     )
+    vehicle = calibrated_vehicle()
+    vehicle.battery.initial_state_of_charge = args.initial_soc
+    if args.speed_cap_mps is not None:
+        vehicle.drivetrain.configured_speed_limit_mps = args.speed_cap_mps
+    vehicle.validate()
     result = run(
         profile,
         track,
+        vehicle=vehicle,
         config=EnduranceRunConfig(
             laps=args.laps,
             maximum_brake_pressure_psi=args.maximum_brake_pressure_psi,
+            minimum_state_of_charge=args.minimum_soc,
+            path_speed_tolerance_mps=args.path_speed_tolerance_mps,
         ),
     )
     print_result(result)
     summary_path, telemetry_path = write_event_outputs(result, args.output_dir)
+    configuration = {
+        name: str(value) if isinstance(value, Path) else value
+        for name, value in vars(args).items()
+    }
+    (args.output_dir / "run_configuration.json").write_text(
+        json.dumps(configuration, indent=2), encoding="utf-8"
+    )
     print(summary_path)
     print(telemetry_path)
 

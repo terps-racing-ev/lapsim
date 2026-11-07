@@ -1,9 +1,10 @@
 """Tests for quasi-static longitudinal and lateral load transfer."""
 
-from math import isclose
+from math import isclose, pi
 from unittest import TestCase
 
 from vehicle_model import AeroForces, Chassis, Suspension
+from utils.units import pound_force_feet_to_newton_meters
 
 
 class SuspensionLoadTransferTests(TestCase):
@@ -11,6 +12,16 @@ class SuspensionLoadTransferTests(TestCase):
         self.suspension = Suspension()
         self.chassis = Chassis()
         self.aero_forces = AeroForces(0.0, 0.0, 0.0, 0.0)
+
+    def test_default_roll_stiffness_is_950p2_lbft_per_degree(self) -> None:
+        expected_nm_per_rad = (
+            pound_force_feet_to_newton_meters(950.2) * 180.0 / pi
+        )
+
+        self.assertAlmostEqual(
+            self.suspension.total_roll_stiffness_nm_per_rad,
+            expected_nm_per_rad,
+        )
 
     def loads(self, lateral_acceleration_mps2: float):
         return self.suspension.tire_normal_loads_n(

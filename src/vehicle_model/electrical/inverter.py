@@ -32,6 +32,8 @@ class Inverter:
         self,
         battery_discharge_limit_w: float,
     ) -> float:
+        """Reduce the available pack DC power by inverter conversion loss."""
+
         if battery_discharge_limit_w < 0:
             raise ValueError("battery_discharge_limit_w cannot be negative")
         return battery_discharge_limit_w * self.efficiency
@@ -40,6 +42,8 @@ class Inverter:
         self,
         motor_electrical_power_w: float,
     ) -> float:
+        """Return pack DC demand, including loss, for motor electrical power."""
+
         if motor_electrical_power_w < 0:
             raise ValueError("motor_electrical_power_w cannot be negative")
         return motor_electrical_power_w / self.efficiency

@@ -16,11 +16,13 @@ from typing import Any, Literal
 from vehicle_model.vehicle import Vehicle
 
 from ..core.controls import Controls
+from ..core.integration import advance_vehicle_by_distance
 from ..core.profiles import ControlsProfile
 from ..core.telemetry import JOULES_PER_KILOWATT_HOUR, Telemetry, TelemetryRecorder
 from ..courses.spatial_track import SpatialTrack
 from ..optimization.torque_profile import TorqueProfile
 from ..solvers.path_constraints import PathConstraintSolver
+from ..solvers.skidpad import SkidpadOperatingPoint, solve_skidpad_operating_point
 from .endurance import EnduranceRunConfig, EnduranceSimulator
 from .scoring import (
     FSAEEnduranceEfficiencyScoring,
@@ -30,8 +32,8 @@ from .scoring import (
     TimedEventScoring,
 )
 
-
 EventName = Literal["endurance", "acceleration", "skidpad"]
+CONTROL_SAMPLE_TIMESTEP_S = 0.05
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,18 +164,13 @@ def _acceleration_track_with_rollout(
     first_dx_m = timed_track.x_m[1] - timed_track.x_m[0]
     first_dy_m = timed_track.y_m[1] - timed_track.y_m[0]
     first_segment_m = hypot(first_dx_m, first_dy_m)
-    heading_rad = (
-        atan2(first_dy_m, first_dx_m)
-        if first_segment_m > 1e-12
-        else 0.0
-    )
+    heading_rad = atan2(first_dy_m, first_dx_m) if first_segment_m > 1e-12 else 0.0
     staging_x_m = timed_track.x_m[0] - rollout_distance_m * cos(heading_rad)
     staging_y_m = timed_track.y_m[0] - rollout_distance_m * sin(heading_rad)
     return SpatialTrack(
         distance_m=(0.0,)
         + tuple(
-            rollout_distance_m + distance_m
-            for distance_m in timed_track.distance_m
+            rollout_distance_m + distance_m for distance_m in timed_track.distance_m
         ),
         x_m=(staging_x_m,) + timed_track.x_m,
         y_m=(staging_y_m,) + timed_track.y_m,
@@ -234,13 +231,15 @@ def _run_prescribed_path(
         for cell_index, cell_length_m in enumerate(track.cell_length_m):
             lap_distance_m = track.cell_center_distance_m[cell_index]
             controls = steering_profile.controls_at(lap_distance_m)
-            time_before_step_s = vehicle.time_s
             try:
-                vehicle.update_state(controls, cell_length_m)
+                timestep_s = advance_vehicle_by_distance(
+                    vehicle,
+                    controls,
+                    cell_length_m,
+                )
             except ValueError as error:
                 failure_reason = f"vehicle could not traverse the event path: {error}"
                 break
-            timestep_s = vehicle.time_s - time_before_step_s
             if timestep_s <= 0.0:
                 failure_reason = "vehicle did not advance in time"
                 break
@@ -323,9 +322,7 @@ def simulate_acceleration(
         if setup.rollout_distance_m > 0.0 and run.telemetry.sample_count > 0
         else 0.0
     )
-    scoring_time_s = (
-        run.elapsed_time_s - rollout_time_s if run.completed else None
-    )
+    scoring_time_s = run.elapsed_time_s - rollout_time_s if run.completed else None
     score = scoring.score(scoring_time_s, completed=run.completed)
     return EventResult(
         event="acceleration",
@@ -353,6 +350,75 @@ def simulate_acceleration(
     )
 
 
+def _steady_skidpad_run(
+    vehicle: Vehicle,
+    track: SpatialTrack,
+    operating_point: SkidpadOperatingPoint,
+    setup: SkidpadConfig,
+) -> _PathRunResult:
+    """Build lap timing and telemetry from one solved steady operating point."""
+
+    vehicle.reset_state()
+    vehicle.speed_mps = operating_point.speed_mps
+    vehicle.body_slip_angle_rad = operating_point.vehicle.body_slip_angle_rad
+    vehicle.curvature_per_m = operating_point.vehicle.curvature_per_m
+    vehicle.update_state(
+        operating_point.controls,
+        CONTROL_SAMPLE_TIMESTEP_S,
+    )
+    recorder = TelemetryRecorder()
+    elapsed_time_s = 0.0
+    distance_m = 0.0
+    energy_j = 0.0
+    lap_times_s: list[float] = []
+    completed_laps = 0
+    failure_reason: str | None = None
+
+    for lap_index in range(setup.total_laps):
+        lap_start_time_s = elapsed_time_s
+        for cell_index, cell_length_m in enumerate(track.cell_length_m):
+            timestep_s = cell_length_m / operating_point.speed_mps
+            elapsed_time_s += timestep_s
+            distance_m += cell_length_m
+            energy_j += vehicle.battery.current_power_w * timestep_s
+            snapshot = vehicle.telemetry_snapshot()
+            snapshot.update(
+                {
+                    "vehicle.time_s": elapsed_time_s,
+                    "vehicle.distance_m": distance_m,
+                    "vehicle.speed_mps": operating_point.speed_mps,
+                    "vehicle.x_m": track.x_m[cell_index + 1],
+                    "vehicle.y_m": track.y_m[cell_index + 1],
+                    "event.lap_index": float(lap_index),
+                    "event.cell_index": float(cell_index),
+                    "event.lap_distance_m": track.distance_m[cell_index + 1],
+                    "event.cumulative_net_energy_j": energy_j,
+                }
+            )
+            recorder.record(snapshot, timestep_s=timestep_s)
+            if elapsed_time_s > setup.maximum_driving_time_s:
+                failure_reason = "maximum configured driving time exceeded"
+                break
+        if failure_reason is not None:
+            break
+        completed_laps += 1
+        lap_times_s.append(elapsed_time_s - lap_start_time_s)
+
+    vehicle.time_s = elapsed_time_s
+    vehicle.distance_m = distance_m
+    vehicle.speed_mps = operating_point.speed_mps
+    return _PathRunResult(
+        completed=(completed_laps == setup.total_laps and failure_reason is None),
+        elapsed_time_s=elapsed_time_s,
+        distance_m=distance_m,
+        energy_kwh=energy_j / JOULES_PER_KILOWATT_HOUR,
+        completed_laps=completed_laps,
+        lap_times_s=tuple(lap_times_s),
+        failure_reason=failure_reason,
+        telemetry=recorder.freeze(),
+    )
+
+
 def simulate_skidpad(
     vehicle: Vehicle,
     track: SpatialTrack,
@@ -361,23 +427,29 @@ def simulate_skidpad(
     config: SkidpadConfig | None = None,
     scoring: TimedEventScoring = FSAE_2026_MI_SKIDPAD_SCORING,
 ) -> EventResult:
-    """Run warmup/scored laps of a closed circle and estimate skidpad points."""
+    """Score maximum steady circle speed using circumference divided by speed."""
 
     if not track.closed:
         raise ValueError("skidpad requires a closed track")
     if scoring.event_name != "skidpad":
         raise ValueError("skidpad requires a skidpad scoring model")
     setup = config if config is not None else SkidpadConfig()
-    run = _run_prescribed_path(
+    selected_profile = _require_controls_profile(profile)
+    target_curvature_per_m = fmean(track.curvature_per_m)
+    if any(
+        abs(curvature_per_m - target_curvature_per_m) > 1e-6
+        for curvature_per_m in track.curvature_per_m
+    ):
+        raise ValueError("skidpad requires a constant-curvature track")
+    operating_point = solve_skidpad_operating_point(
         vehicle,
-        track,
-        _require_controls_profile(profile),
-        laps=setup.total_laps,
-        starting_speed_mps=setup.starting_speed_mps,
-        maximum_driving_time_s=setup.maximum_driving_time_s,
+        target_curvature_per_m,
+        selected_profile.controls_at(0.0),
+        setup.starting_speed_mps,
     )
+    run = _steady_skidpad_run(vehicle, track, operating_point, setup)
     scoring_time_s = (
-        fmean(run.lap_times_s[-setup.scored_laps :]) if run.completed else None
+        track.length_m / operating_point.speed_mps if run.completed else None
     )
     score = scoring.score(scoring_time_s, completed=run.completed)
     return EventResult(
@@ -399,6 +471,27 @@ def simulate_skidpad(
             "maximum_time_s": score.maximum_time_s,
             "warmup_laps": float(setup.warmup_laps),
             "scored_laps": float(setup.scored_laps),
+            "steady_speed_mps": operating_point.speed_mps,
+            "steady_radius_m": 1.0 / abs(target_curvature_per_m),
+            "steady_lateral_acceleration_g": (
+                operating_point.speed_mps**2 * abs(target_curvature_per_m)
+                / vehicle.gravity_mps2
+            ),
+            "steady_body_slip_angle_rad": operating_point.vehicle.body_slip_angle_rad,
+            "steady_longitudinal_residual_mps2": operating_point.longitudinal_residual_mps2,
+            "steady_lateral_residual_mps2": operating_point.lateral_residual_mps2,
+            "steady_yaw_residual_mps2": (
+                operating_point.vehicle.yaw_moment_nm
+                / (vehicle.mass_kg * vehicle.chassis.wheelbase_m)
+            ),
+            "steady_motor_torque_nm": (
+                operating_point.controls.motor_torque_request_nm
+            ),
+            "steady_steering_angle_rad": operating_point.controls.steering_angle_rad,
+            "steady_lateral_acceleration_mps2": (
+                operating_point.vehicle.lateral_acceleration_mps2
+            ),
+            "steady_lateral_utilization": operating_point.lateral_utilization,
             "time_eligible": score.time_eligible,
         },
     )
@@ -417,11 +510,7 @@ def simulate_endurance(
 
     if not track.closed:
         raise ValueError("endurance requires a closed track")
-    setup = (
-        config
-        if config is not None
-        else EnduranceRunConfig()
-    )
+    setup = config if config is not None else EnduranceRunConfig()
     solver = (
         constraint_solver
         if constraint_solver is not None
@@ -467,9 +556,7 @@ def simulate_endurance(
     telemetry = Telemetry(telemetry_channels)
     score = scoring.score(run)
     distance_m = (
-        telemetry["vehicle.distance_m"][-1]
-        if telemetry.sample_count > 0
-        else 0.0
+        telemetry["vehicle.distance_m"][-1] if telemetry.sample_count > 0 else 0.0
     )
     return EventResult(
         event="endurance",
@@ -493,6 +580,9 @@ def simulate_endurance(
             "endurance_time_points": score.endurance_time_points,
             "endurance_lap_points": score.endurance_lap_points,
             "efficiency_points": score.efficiency_points,
+            "initial_state_of_charge": vehicle.battery.initial_state_of_charge,
+            "minimum_state_of_charge": setup.minimum_state_of_charge,
+            "final_state_of_charge": run.final_state_of_charge,
             "adjusted_energy_per_lap_kg": score.adjusted_energy_per_lap_kg,
             "efficiency_factor": score.efficiency_factor,
             "endurance_time_eligible": score.endurance_time_eligible,

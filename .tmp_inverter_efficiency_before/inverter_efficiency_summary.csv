@@ -1,0 +1,9 @@
+metric,value
+mean_efficiency,0.467640
+min_efficiency,-38.578442
+max_efficiency,2195.483675
+mean_dc_input_power_w,3167.16
+mean_ac_output_power_w,2930.39
+mean_loss_power_w,449.96
+mean_loss_power_kw,0.4500
+samples,12158

@@ -1,4 +1,4 @@
-"""Tests for recorded controls and distance-indexed replay."""
+"""Tests for recorded controls and time-indexed replay."""
 
 from math import isclose
 from unittest import TestCase
@@ -40,19 +40,19 @@ class RecordedLapTests(TestCase):
 
 
 class ReplayTests(TestCase):
-    def test_replay_requires_positive_distance_steps(self) -> None:
+    def test_replay_requires_positive_time_steps(self) -> None:
         controls = (Controls(), Controls())
 
         with self.assertRaisesRegex(
-            ValueError, "distance_step_m must be finite and positive"
+            ValueError, "timestep_s must be finite and positive"
         ):
             replay_controls(Vehicle(), controls, 0.0)
         with self.assertRaisesRegex(
-            ValueError, "distance_step_m must contain one value per control"
+            ValueError, "timestep_s must contain one value per control"
         ):
             replay_controls(Vehicle(), controls, (1.0,))
         with self.assertRaisesRegex(
-            ValueError, "Every distance step must be finite and positive"
+            ValueError, "Every time step must be finite and positive"
         ):
             replay_controls(Vehicle(), controls, (1.0, -1.0))
 
@@ -61,11 +61,11 @@ class ReplayTests(TestCase):
         telemetry = replay_controls(
             vehicle,
             (Controls(motor_torque_request_nm=20.0),) * 3,
-            1.0,
+            0.1,
         )
 
         self.assertEqual(len(telemetry.time_s), 3)
-        self.assertGreater(telemetry.time_s[-1], 0.0)
-        self.assertTrue(isclose(telemetry.distance_m[-1], 3.0))
+        self.assertTrue(isclose(telemetry.time_s[-1], 0.3))
+        self.assertGreater(telemetry.distance_m[-1], 3.0)
         self.assertGreater(telemetry.speed_mps[-1], 10.0)
         self.assertGreater(telemetry.battery_power_w[-1], 0.0)

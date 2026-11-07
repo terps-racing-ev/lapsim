@@ -15,8 +15,6 @@ class AeroTests(TestCase):
         self.assertTrue(isclose(aero.drag_coefficient, 1.6048838348388528))
         self.assertTrue(isclose(aero.lift_coefficient, -2.4206997842152696))
         self.assertTrue(isclose(aero.front_downforce_fraction, 0.5269293255))
-        self.assertTrue(isclose(aero.drag_area_m2, 1.579199938368))
-        self.assertTrue(isclose(aero.downforce_area_m2, 2.3819599070384))
 
     def test_negative_lift_coefficient_produces_positive_downforce(self) -> None:
         aero = Aero()
@@ -26,20 +24,19 @@ class AeroTests(TestCase):
 
         forces = aero.forces_n(speed_mps, air_density_kgpm3)
 
-        self.assertTrue(isclose(forces.drag_n, dynamic_pressure_pa * aero.drag_area_m2))
         self.assertTrue(
-            isclose(forces.downforce_n, dynamic_pressure_pa * aero.downforce_area_m2)
+            isclose(
+                forces.drag_n,
+                dynamic_pressure_pa * aero.drag_coefficient * aero.frontal_area_m2,
+            )
+        )
+        self.assertTrue(
+            isclose(
+                forces.downforce_n,
+                -dynamic_pressure_pa * aero.lift_coefficient * aero.frontal_area_m2,
+            )
         )
         self.assertGreater(forces.downforce_n, 0.0)
-
-    def test_coefficient_area_aliases_update_coefficients(self) -> None:
-        aero = Aero(frontal_area_m2=0.5)
-
-        aero.drag_area_m2 = 0.75
-        aero.downforce_area_m2 = 1.25
-
-        self.assertEqual(aero.drag_coefficient, 1.5)
-        self.assertEqual(aero.lift_coefficient, -2.5)
 
     def test_body_roll_linearly_reduces_then_clamps_downforce(self) -> None:
         aero = Aero()
@@ -96,7 +93,7 @@ class AeroTests(TestCase):
         self,
     ) -> None:
         baseline = Vehicle()
-        active = Vehicle.with_active_aero()
+        active = Vehicle(aero=ActiveAero())
 
         baseline_forces = baseline.aero_forces_n(
             20.0,
@@ -132,15 +129,8 @@ class AeroTests(TestCase):
         self.assertTrue(forced_low_drag)
         self.assertFalse(forced_high_downforce)
 
-    def test_active_aero_vehicle_factory_adds_three_pounds(self) -> None:
-        baseline = Vehicle()
-        active = Vehicle.with_active_aero()
-
-        self.assertIsInstance(active.aero, ActiveAero)
-        self.assertAlmostEqual(active.mass_kg - baseline.mass_kg, 1.36077711)
-
     def test_active_aero_state_is_reported_in_vehicle_telemetry(self) -> None:
-        vehicle = Vehicle.with_active_aero(initial_speed_mps=20.0)
+        vehicle = Vehicle(aero=ActiveAero(), initial_speed_mps=20.0)
 
         vehicle.update_state(Controls(), 0.1)
         telemetry = vehicle.telemetry_snapshot()

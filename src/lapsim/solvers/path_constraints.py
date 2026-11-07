@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import cache
 from math import atan, isfinite
+
+from scipy.optimize import brentq
 
 from vehicle_model.environment import (
     STANDARD_AIR_DENSITY_KGPM3,
@@ -14,6 +17,7 @@ from vehicle_model.mech.brakes import DEFAULT_MAXIMUM_BRAKE_PRESSURE_PSI
 from vehicle_model.vehicle import Vehicle
 
 from ..core.controls import Controls
+from ..core.integration import advance_vehicle_by_distance
 from ..courses.spatial_track import SpatialTrack
 
 
@@ -79,15 +83,21 @@ class PathConstraintSolver:
         ]
         ceilings = local_limits.copy()
         cell_lengths = track.cell_length_m
+        previous_next_speeds: list[float | None] = [None] * track.cell_count
 
         for pass_number in range(1, self.maximum_passes + 1):
             largest_change_mps = 0.0
             for cell_index in range(track.cell_count - 1, -1, -1):
                 next_index = (cell_index + 1) % track.cell_count
+                # A cell's bound only needs solving again when its exit-speed
+                # bound changes. Vehicle and track stay fixed during this solve.
+                if previous_next_speeds[cell_index] == ceilings[next_index]:
+                    continue
+                previous_next_speeds[cell_index] = ceilings[next_index]
                 reachable_speed_mps = self._maximum_entry_speed_mps(
                     vehicle=vehicle,
                     next_speed_mps=ceilings[next_index],
-                    local_speed_limit_mps=local_limits[cell_index],
+                    local_speed_limit_mps=ceilings[cell_index],
                     curvature_per_m=track.curvature_per_m[cell_index],
                     cell_length_m=cell_lengths[cell_index],
                 )
@@ -124,6 +134,7 @@ class PathConstraintSolver:
     ) -> float:
         """Solve the variable-deceleration distance equation conservatively."""
 
+        @cache
         def residual(entry_speed_mps: float) -> float:
             candidate = deepcopy(vehicle)
             candidate.speed_mps = entry_speed_mps
@@ -142,7 +153,11 @@ class PathConstraintSolver:
                 ),
             )
             try:
-                candidate.update_state(maximum_braking, cell_length_m)
+                advance_vehicle_by_distance(
+                    candidate,
+                    maximum_braking,
+                    cell_length_m,
+                )
             except ValueError as error:
                 if "stops before the end of the cell" in str(error):
                     return -(next_speed_mps**2)
@@ -153,6 +168,18 @@ class PathConstraintSolver:
         upper_speed_mps = local_speed_limit_mps
         if residual(upper_speed_mps) <= 0.0:
             return upper_speed_mps
+        if lower_speed_mps >= upper_speed_mps or residual(lower_speed_mps) >= 0.0:
+            return lower_speed_mps
+        root_mps = brentq(
+            residual, lower_speed_mps, upper_speed_mps, xtol=1e-10
+        )
+        # Stay on the feasible side of the root, far below the path solver's
+        # convergence tolerance. Avoid forty costly full-vehicle previews.
+        conservative_speed_mps = max(lower_speed_mps, root_mps - 1e-8)
+        if residual(conservative_speed_mps) <= 0.0:
+            return conservative_speed_mps
+        # Retain a feasible lower bracket if the force model is discontinuous.
+        upper_speed_mps = conservative_speed_mps
         for _ in range(40):
             candidate_speed_mps = 0.5 * (lower_speed_mps + upper_speed_mps)
             if residual(candidate_speed_mps) <= 0.0:
@@ -173,9 +200,7 @@ class PathConstraintSolver:
         upper_speed_mps = vehicle_speed_limit_mps
         for _ in range(50):
             candidate_speed_mps = 0.5 * (lower_speed_mps + upper_speed_mps)
-            lateral_acceleration_mps2 = (
-                candidate_speed_mps**2 * absolute_curvature_per_m
-            )
+            lateral_acceleration_mps2 = candidate_speed_mps**2 * curvature_per_m
             aero_forces = vehicle.aero_forces_n(
                 candidate_speed_mps,
                 lateral_acceleration_mps2,
@@ -189,9 +214,14 @@ class PathConstraintSolver:
                 vehicle.chassis,
                 lateral_acceleration_mps2=lateral_acceleration_mps2,
             )
-            available_lateral_force_n = sum(
-                vehicle.tire.lateral_force_capacity_n(normal_load_n)
-                for normal_load_n in tire_normal_loads.all_n
+            alignment_state = vehicle.wheel_alignment_state(
+                atan(curvature_per_m * vehicle.chassis.wheelbase_m),
+                lateral_acceleration_mps2,
+            )
+            available_lateral_force_n = vehicle.tire.total_lateral_force_capacity_n(
+                tire_normal_loads,
+                vehicle.chassis.static_front_weight_fraction,
+                alignment_state.camber_angles_rad,
             )
             required_lateral_force_n = (
                 vehicle.mass_kg * candidate_speed_mps**2 * absolute_curvature_per_m

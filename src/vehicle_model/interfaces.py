@@ -8,12 +8,14 @@ model or changing the solver.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from .aero.model import AeroForces
+    from .aero.forces import AeroForces
+    from .mech.alignment import WheelAlignmentState
     from .mech.loads import TireForces, TireNormalLoads
-    from .mech.tire import TireStates
+    from .mech.wheel_state import TireKinematics, TireStates
     from .vehicle import Vehicle
 
 
@@ -67,6 +69,7 @@ class MotorModel(ComponentModel, Protocol):
     def mechanical_power_limit_w(
         self,
         electrical_input_limit_w: float,
+        motor_speed_rpm: float | None = None,
     ) -> float: ...
 
     def electrical_power_for_mechanical_output_w(
@@ -138,10 +141,6 @@ class ChainDriveModel(ComponentModel, Protocol):
     ) -> float: ...
 
 
-# Compatibility alias for the earlier generic name.
-FinalDriveModel = ChainDriveModel
-
-
 class DrivetrainModel(ComponentModel, Protocol):
     """Powertrain interface consumed by vehicle and lap solvers."""
 
@@ -149,10 +148,7 @@ class DrivetrainModel(ComponentModel, Protocol):
     inverter: InverterModel
     chain_drive: ChainDriveModel
     tire: TireModel
-    rolling_radius_m: float
     driven_wheel_inertia_kgm2: float
-    current_motor_torque_nm: float
-    current_motor_speed_rpm: float
     current_wheel_force_n: float
 
     @property
@@ -160,9 +156,6 @@ class DrivetrainModel(ComponentModel, Protocol):
 
     @property
     def vehicle_speed_limit_mps(self) -> float: ...
-
-    @property
-    def max_motor_torque_nm(self) -> float: ...
 
     def available_motor_torque_nm(
         self,
@@ -206,6 +199,8 @@ class AeroModel(ComponentModel, Protocol):
     drag_coefficient: float
     lift_coefficient: float
 
+    def select_configuration(self, curvature_per_m: float) -> bool: ...
+
     def forces_n(
         self,
         vehicle_speed_mps: float,
@@ -230,30 +225,48 @@ class TireModel(ComponentModel, Protocol):
     @property
     def maximum_longitudinal_coefficient(self) -> float: ...
 
-    def lateral_force_capacity_n(self, normal_load_n: float) -> float: ...
+    def lateral_force_capacity_n(
+        self,
+        normal_load_n: float,
+        camber_angle_rad: float = 0.0,
+    ) -> float: ...
 
-    def longitudinal_force_capacity_n(self, normal_load_n: float) -> float: ...
+    def longitudinal_force_capacity_n(
+        self,
+        normal_load_n: float,
+        camber_angle_rad: float = 0.0,
+    ) -> float: ...
 
     def combined_longitudinal_force_capacity_n(
         self,
         normal_load_n: float,
         lateral_force_n: float,
+        camber_angle_rad: float = 0.0,
     ) -> float: ...
 
     def lateral_forces_n(
         self,
         normal_loads_n: TireNormalLoads,
         total_lateral_force_n: float,
+        *,
+        front_lateral_force_fraction: float,
+        camber_angles_rad: Sequence[float] = (0.0, 0.0, 0.0, 0.0),
     ) -> TireForces: ...
+
+    def total_lateral_force_capacity_n(
+        self,
+        normal_loads_n: TireNormalLoads,
+        front_lateral_force_fraction: float,
+        camber_angles_rad: Sequence[float] = (0.0, 0.0, 0.0, 0.0),
+    ) -> float: ...
 
     def calculate_forces(
         self,
         normal_loads_n: TireNormalLoads,
-        total_lateral_force_n: float,
+        kinematics: TireKinematics,
         drive_force_request_n: float,
         front_brake_force_request_n: float,
         rear_brake_force_request_n: float,
-        vehicle_speed_mps: float,
         timestep_s: float,
     ) -> TireStates: ...
 
@@ -277,6 +290,36 @@ class ChassisModel(ComponentModel, Protocol):
     rear_roll_axis_height_m: float
     static_front_weight_fraction: float
 
+    @property
+    def wheel_positions_m(
+        self,
+    ) -> tuple[
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
+    ]: ...
+
+
+class WheelAlignmentModel(ComponentModel, Protocol):
+    """Per-wheel static alignment and steering/suspension kinematics."""
+
+    current_state: WheelAlignmentState
+
+    def calculate(
+        self,
+        chassis: ChassisModel,
+        steering_angle_rad: float,
+        body_roll_angle_rad: float,
+        suspension_travel_m: Sequence[float],
+    ) -> WheelAlignmentState: ...
+
+    def update_state(
+        self,
+        state: WheelAlignmentState,
+        timestep_s: float,
+    ) -> None: ...
+
 
 class SuspensionModel(ComponentModel, Protocol):
     """Normal-load distribution model consumed by tire calculations."""
@@ -289,6 +332,12 @@ class SuspensionModel(ComponentModel, Protocol):
         chassis: ChassisModel,
         lateral_acceleration_mps2: float,
     ) -> float: ...
+
+    def wheel_travel_m(
+        self,
+        chassis: ChassisModel,
+        body_roll_angle_rad: float,
+    ) -> tuple[float, float, float, float]: ...
 
     def tire_normal_loads_n(
         self,

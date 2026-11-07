@@ -33,6 +33,7 @@ from analysis.common import (  # noqa: E402
     read_numeric_csv,
 )
 from lapsim import Controls, SpatialCoordinate, SpatialTrack  # noqa: E402
+from lapsim.core.integration import advance_vehicle_by_distance  # noqa: E402
 from utils.units import pounds_to_kilograms  # noqa: E402
 from vehicle_model import Vehicle  # noqa: E402
 
@@ -487,7 +488,7 @@ def replay_lap_distance(
     constant_tire_mu: float | None = None,
     cornering_drag_coefficient: float = 0.036,
 ) -> dict[str, np.ndarray]:
-    """Replay recorded controls by station; ``Vehicle`` derives elapsed time."""
+    """Replay controls by station through the time-domain vehicle adapter."""
 
     required = (
         "torque_feedback_nm",
@@ -561,7 +562,7 @@ def replay_lap_distance(
     vehicle.validate()
     vehicle.reset_state()
 
-    rolling_radius_m = vehicle.drivetrain.rolling_radius_m
+    rolling_radius_m = vehicle.tire.rolling_radius_m
     output: dict[str, list[float]] = {
         "time_s": [],
         "distance_m": [],
@@ -631,7 +632,7 @@ def replay_lap_distance(
                 requested_curvature * vehicle.chassis.wheelbase_m
             ),
         )
-        vehicle.update_state(controls, float(distance_step_m))
+        advance_vehicle_by_distance(vehicle, controls, float(distance_step_m))
         append_state(requested_curvature)
 
     native = {name: np.asarray(values) for name, values in output.items()}
@@ -1543,9 +1544,9 @@ def main() -> None:
         "simulation_inputs": {
             "independent_coordinate": "projected recorded lap station",
             "control_replay_domain": "distance",
-            "speed_integration": "v_next^2 = v^2 + 2*a*distance_step",
+            "speed_integration": "v_next = max(0, v + a*timestep)",
             "component_timestep": (
-                "derived internally by Vehicle from each spatial cell"
+                "solved by the spatial adapter before each Vehicle update"
             ),
             "torque": "motor torque feedback",
             "curvature": "selected SpatialTrack curvature (GNSS/IMU fused track for this run)",

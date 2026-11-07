@@ -1,0 +1,287 @@
+<div id="mis-temp-plot" class="mis-temp-plot">
+  <style>
+    #mis-temp-plot {
+      --plot-height: 300px;
+      color: var(--foreground);
+      font-family: inherit;
+      font-size: var(--font-size-base, 14px);
+      position: relative;
+    }
+    #mis-temp-plot h2 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+    #mis-temp-plot .subtitle,
+    #mis-temp-plot .source {
+      color: var(--muted-foreground);
+      font-size: 0.86rem;
+      margin: 0.35rem 0 0;
+    }
+    #mis-temp-plot .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.2rem 1rem;
+      margin: 0.75rem 0 1rem;
+    }
+    #mis-temp-plot .legend button {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      color: var(--foreground);
+      cursor: pointer;
+      font: inherit;
+      padding: 0.35rem 0;
+    }
+    #mis-temp-plot .legend button:focus-visible {
+      outline: 2px solid var(--ring);
+      outline-offset: 3px;
+    }
+    #mis-temp-plot .swatch {
+      display: inline-block;
+      width: 0.8rem;
+      height: 0.18rem;
+      margin: 0 0.35rem 0.18rem 0;
+      vertical-align: middle;
+      background: var(--series-color);
+    }
+    #mis-temp-plot .plot-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.2rem;
+    }
+    #mis-temp-plot figure {
+      margin: 0;
+      min-width: 0;
+    }
+    #mis-temp-plot figcaption {
+      font-weight: 500;
+      margin: 0 0 0.25rem 3.4rem;
+    }
+    #mis-temp-plot svg.mis-chart {
+      display: block;
+      height: var(--plot-height);
+      overflow: visible;
+      width: 100%;
+    }
+    #mis-temp-plot .chart-grid {
+      stroke: var(--border);
+      stroke-opacity: 0.55;
+      shape-rendering: crispEdges;
+    }
+    #mis-temp-plot .chart-frame {
+      fill: none;
+      stroke: var(--border);
+      stroke-width: 1;
+    }
+    #mis-temp-plot .chart-axis path,
+    #mis-temp-plot .chart-axis line {
+      stroke: var(--border);
+    }
+    #mis-temp-plot .chart-label,
+    #mis-temp-plot .axis-title,
+    #mis-temp-plot .value-label {
+      fill: var(--foreground);
+      font-size: 12px;
+    }
+    #mis-temp-plot .axis-title {
+      font-size: 12px;
+    }
+    #mis-temp-plot .chart-line {
+      fill: none;
+      stroke-width: 2.3;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }
+    #mis-temp-plot .chart-dot {
+      fill: var(--background);
+      stroke-width: 2;
+    }
+    #mis-temp-plot .hover-guide {
+      stroke: var(--muted-foreground);
+      stroke-dasharray: 3 3;
+      stroke-width: 1;
+      pointer-events: none;
+    }
+    #mis-temp-plot .hover-marker {
+      fill: var(--background);
+      stroke-width: 2;
+      pointer-events: none;
+    }
+    #mis-temp-plot .tooltip {
+      background: var(--popover);
+      border: 1px solid var(--border);
+      color: var(--popover-foreground);
+      display: none;
+      font-size: 12px;
+      line-height: 1.35;
+      padding: 0.45rem 0.55rem;
+      pointer-events: none;
+      position: absolute;
+      z-index: 2;
+    }
+    #mis-temp-plot .tooltip-date {
+      font-weight: 500;
+      margin-bottom: 0.2rem;
+    }
+    #mis-temp-plot .source a {
+      color: inherit;
+    }
+    @media (max-width: 600px) {
+      #mis-temp-plot .plot-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <h2 id="mis-temp-title">Average temperature at Michigan International Speedway</h2>
+  <p class="subtitle">Daily mean air temperature at 2 m · °F · June windows shown for 2024–2026</p>
+  <div class="legend" role="group" aria-label="Years">
+    <button type="button" data-year="2024" aria-pressed="true"><span class="swatch" style="--series-color:var(--viz-series-1)"></span>2024</button>
+    <button type="button" data-year="2025" aria-pressed="true"><span class="swatch" style="--series-color:var(--viz-series-2)"></span>2025</button>
+    <button type="button" data-year="2026" aria-pressed="true"><span class="swatch" style="--series-color:var(--viz-series-3)"></span>2026</button>
+  </div>
+
+  <div class="plot-grid">
+    <figure>
+      <figcaption>June 1–5</figcaption>
+      <svg class="mis-chart" data-window="early" role="img" aria-label="Daily mean temperatures for June 1 through June 5 at Michigan International Speedway, 2024 through 2026"></svg>
+    </figure>
+    <figure>
+      <figcaption>June 16–21</figcaption>
+      <svg class="mis-chart" data-window="late" role="img" aria-label="Daily mean temperatures for June 16 through June 21 at Michigan International Speedway, 2024 through 2026"></svg>
+    </figure>
+  </div>
+
+  <div class="tooltip" role="tooltip" aria-hidden="true"></div>
+  <p class="source">Source: <a href="https://open-meteo.com/en/docs/historical-weather-api">Open-Meteo historical weather archive</a>; track coordinates queried at 42.0663°N, 84.2414°W.</p>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script>
+    (() => {
+      const root = document.getElementById('mis-temp-plot');
+      const series = [
+        { key: '2024', color: '--viz-series-1' },
+        { key: '2025', color: '--viz-series-2' },
+        { key: '2026', color: '--viz-series-3' }
+      ];
+      const values = {
+        early: [
+          { label: 'Jun 1', idx: 0, '2024': 64.1, '2025': 55.8, '2026': 64.1 },
+          { label: 'Jun 2', idx: 1, '2024': 66.5, '2025': 63.8, '2026': 62.9 },
+          { label: 'Jun 3', idx: 2, '2024': 68.9, '2025': 74.6, '2026': 66.3 },
+          { label: 'Jun 4', idx: 3, '2024': 72.3, '2025': 74.5, '2026': 70.6 },
+          { label: 'Jun 5', idx: 4, '2024': 71.9, '2025': 62.4, '2026': 71.0 }
+        ],
+        late: [
+          { label: 'Jun 16', idx: 0, '2024': 72.9, '2025': 70.7, '2026': 64.2 },
+          { label: 'Jun 17', idx: 1, '2024': 80.9, '2025': 75.1, '2026': 61.9 },
+          { label: 'Jun 18', idx: 2, '2024': 80.3, '2025': 74.0, '2026': 63.7 },
+          { label: 'Jun 19', idx: 3, '2024': 80.0, '2025': 67.7, '2026': 63.6 },
+          { label: 'Jun 20', idx: 4, '2024': 80.0, '2025': 70.9, '2026': 64.8 },
+          { label: 'Jun 21', idx: 5, '2024': 78.1, '2025': 78.5, '2026': 63.1 }
+        ]
+      };
+      const active = new Map(series.map(s => [s.key, true]));
+      const tooltip = root.querySelector('.tooltip');
+
+      function color(name) {
+        return getComputedStyle(root).getPropertyValue(name).trim() || 'currentColor';
+      }
+
+      function draw(svgNode, windowKey) {
+        const svg = d3.select(svgNode);
+        const data = values[windowKey];
+        const width = Math.max(320, svgNode.parentElement.getBoundingClientRect().width || 640);
+        const height = 300;
+        const margin = { top: 18, right: 18, bottom: 42, left: 52 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+        const labels = data.map(d => d.label);
+        const allValues = data.flatMap(d => series.map(s => d[s.key]));
+        const [minValue, maxValue] = d3.extent(allValues);
+        const span = Math.max(4, maxValue - minValue);
+        const x = d3.scalePoint().domain(labels).range([0, innerWidth]).padding(0.2);
+        const idxScale = d3.scaleLinear().domain([0, data.length - 1]).range([x(labels[0]), x(labels[labels.length - 1])]);
+        const y = d3.scaleLinear().domain([minValue - span * 0.12, maxValue + span * 0.12]).nice().range([innerHeight, 0]);
+
+        svg.attr('viewBox', `0 0 ${width} ${height}`);
+        svg.selectAll('*').remove();
+        const plot = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+        const yAxis = d3.axisLeft(y).ticks(5).tickFormat(d => `${d}°`);
+        const xAxis = d3.axisBottom(x).tickSize(0);
+
+        plot.append('rect').attr('class', 'chart-frame').attr('data-chart-frame', true).attr('x', 0).attr('y', 0).attr('width', innerWidth).attr('height', innerHeight);
+        plot.append('g').attr('class', 'chart-grid').call(d3.axisLeft(y).ticks(5).tickSize(-innerWidth).tickFormat(''));
+        plot.append('g').attr('class', 'chart-axis').attr('transform', `translate(0,${innerHeight})`).call(xAxis);
+        plot.append('g').attr('class', 'chart-axis').call(yAxis);
+        plot.append('text').attr('class', 'axis-title').attr('data-axis', 'x').attr('x', innerWidth / 2).attr('y', innerHeight + 36).attr('text-anchor', 'middle').text('Date');
+        plot.append('text').attr('class', 'axis-title').attr('data-axis', 'y').attr('transform', 'rotate(-90)').attr('x', -innerHeight / 2).attr('y', -39).attr('text-anchor', 'middle').text('Daily mean temperature (°F)');
+
+        const line = key => d3.line().x(d => x(d.label)).y(d => y(d[key])).curve(d3.curveMonotoneX);
+        series.forEach(s => {
+          const group = plot.append('g').attr('class', `series series-${s.key}`).attr('data-series', s.key).style('display', active.get(s.key) ? null : 'none');
+          group.append('path').attr('class', 'chart-line').attr('d', line(s.key)).attr('stroke', `var(${s.color})`);
+          group.selectAll('circle').data(data).join('circle').attr('class', 'chart-dot').attr('cx', d => x(d.label)).attr('cy', d => y(d[s.key])).attr('r', 3.5).attr('stroke', `var(${s.color})`).attr('data-tooltip', d => `${s.key} ${d.label}: ${d[s.key].toFixed(1)} °F`);
+        });
+
+        const hoverGuide = plot.append('line').attr('class', 'hover-guide').attr('data-chart-hover-guide', true).attr('y1', 0).attr('y2', innerHeight).style('display', 'none');
+        const hoverMarkers = plot.selectAll('.hover-marker').data(series, s => s.key).join('circle').attr('class', 'hover-marker').attr('data-chart-hover-marker', true).attr('r', 4).attr('stroke', s => `var(${s.color})`).style('display', 'none');
+        const hit = plot.append('rect').attr('data-chart-hit', true).attr('data-chart-hover-overlay', 'cross-series').attr('x', 0).attr('y', 0).attr('width', innerWidth).attr('height', innerHeight).attr('fill', 'transparent');
+
+        function hideHover() {
+          hoverGuide.style('display', 'none');
+          hoverMarkers.style('display', 'none');
+          tooltip.style.display = 'none';
+          tooltip.setAttribute('aria-hidden', 'true');
+        }
+
+        function showHover(event) {
+          const [px] = d3.pointer(event, hit.node());
+          const clampedPx = Math.max(x(labels[0]), Math.min(x(labels[labels.length - 1]), px));
+          const t = Math.max(0, Math.min(data.length - 1, idxScale.invert(clampedPx)));
+          const lower = Math.floor(t);
+          const upper = Math.min(data.length - 1, Math.ceil(t));
+          const fraction = t - lower;
+          const nearest = d3.bisector(d => d.idx).center(data, t);
+          const rows = series.filter(s => active.get(s.key)).map(s => {
+            const value = data[lower][s.key] + (data[upper][s.key] - data[lower][s.key]) * fraction;
+            return { ...s, value };
+          });
+          hoverGuide.attr('x1', clampedPx).attr('x2', clampedPx).style('display', null);
+          hoverMarkers.each(function(s) {
+            const row = rows.find(r => r.key === s.key);
+            d3.select(this).attr('cx', clampedPx).attr('cy', row ? y(row.value) : 0).style('display', row ? null : 'none');
+          });
+          tooltip.innerHTML = `<div class="tooltip-date">${data[nearest].label}</div>${rows.map(r => `<div><span style="color:var(${r.color})">●</span> ${r.key}: ${r.value.toFixed(1)} °F</div>`).join('')}`;
+          const bounds = root.getBoundingClientRect();
+          const svgBounds = svgNode.getBoundingClientRect();
+          tooltip.style.left = `${Math.min(root.clientWidth - 150, Math.max(4, svgBounds.left - bounds.left + margin.left + clampedPx + 10))}px`;
+          tooltip.style.top = `${Math.max(4, svgBounds.top - bounds.top + margin.top + y(d3.max(rows, r => r.value)) - 12)}px`;
+          tooltip.style.display = 'block';
+          tooltip.setAttribute('aria-hidden', 'false');
+        }
+
+        hit.on('pointerenter pointermove', showHover).on('pointerleave', hideHover).on('pointerdown', showHover);
+      }
+
+      function redraw() {
+        root.querySelectorAll('svg.mis-chart').forEach(svg => draw(svg, svg.dataset.window));
+      }
+
+      root.querySelectorAll('.legend button').forEach(button => {
+        button.addEventListener('click', () => {
+          const year = button.dataset.year;
+          const next = !active.get(year);
+          active.set(year, next);
+          button.setAttribute('aria-pressed', String(next));
+          redraw();
+        });
+      });
+
+      redraw();
+      if ('ResizeObserver' in window) new ResizeObserver(redraw).observe(root);
+    })();
+  </script>
+</div>

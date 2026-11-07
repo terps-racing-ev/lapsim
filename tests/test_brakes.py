@@ -10,10 +10,10 @@ class BrakeParameterTests(TestCase):
         brakes = Brakes()
         radius_m = 0.2032
 
-        self.assertEqual(brakes.maximum_pressure_psi, 300.0)
+        self.assertEqual(brakes.maximum_pressure_psi, 800.0)
         self.assertEqual(
-            brakes.axle_force_requests_from_pressures_n(301.0, 1_000.0, radius_m),
-            brakes.axle_force_requests_from_pressures_n(300.0, 300.0, radius_m),
+            brakes.axle_force_requests_from_pressures_n(801.0, 1_000.0, radius_m),
+            brakes.axle_force_requests_from_pressures_n(800.0, 800.0, radius_m),
         )
 
     def test_rejects_invalid_pressure_limit(self) -> None:
@@ -61,7 +61,7 @@ class BrakeParameterTests(TestCase):
 
         self.assertEqual(
             brakes.axle_pressures_for_force_requests_psi(1.0e6, 1.0e6, 0.2032),
-            (300.0, 300.0),
+            (800.0, 800.0),
         )
 
     def test_constant_tire_mu_is_load_independent(self) -> None:

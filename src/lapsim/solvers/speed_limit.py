@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from math import ceil, copysign, cos, sin
+from math import atan, ceil, copysign, cos, sin
 
 from utils.units import meters_per_second_to_miles_per_hour
 from vehicle_model.environment import (
@@ -173,9 +173,7 @@ class SpeedLimitSolver:
         upper_speed_mps = vehicle_speed_limit_mps
         for _ in range(50):
             candidate_speed_mps = 0.5 * (lower_speed_mps + upper_speed_mps)
-            lateral_acceleration_mps2 = (
-                candidate_speed_mps**2 * absolute_curvature_per_m
-            )
+            lateral_acceleration_mps2 = candidate_speed_mps**2 * curvature_per_m
             aero_forces = self.vehicle.aero_forces_n(
                 candidate_speed_mps,
                 lateral_acceleration_mps2,
@@ -189,9 +187,16 @@ class SpeedLimitSolver:
                 self.vehicle.chassis,
                 lateral_acceleration_mps2=lateral_acceleration_mps2,
             )
-            available_lateral_force_n = sum(
-                self.vehicle.tire.lateral_force_capacity_n(normal_load_n)
-                for normal_load_n in tire_normal_loads.all_n
+            alignment_state = self.vehicle.wheel_alignment_state(
+                atan(curvature_per_m * self.vehicle.chassis.wheelbase_m),
+                lateral_acceleration_mps2,
+            )
+            available_lateral_force_n = (
+                self.vehicle.tire.total_lateral_force_capacity_n(
+                    tire_normal_loads,
+                    self.vehicle.chassis.static_front_weight_fraction,
+                    alignment_state.camber_angles_rad,
+                )
             )
             required_lateral_force_n = (
                 self.vehicle.mass_kg * candidate_speed_mps**2 * absolute_curvature_per_m

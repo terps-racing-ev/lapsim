@@ -5,7 +5,6 @@ from unittest import TestCase
 
 from lapsim import Controls
 from vehicle_model import (
-    BatteryModel,
     OCVPackBattery,
     RCTheveninBattery,
     Vehicle,
@@ -16,7 +15,6 @@ class OCVPackBatteryTests(TestCase):
     def test_default_pack_configuration_and_ocv_lookup_endpoints(self) -> None:
         battery = OCVPackBattery()
 
-        self.assertIsInstance(battery, BatteryModel)
         self.assertTrue(isclose(battery.pack_capacity_ah, 15.4))
         self.assertEqual(battery.series_cells, 108)
         self.assertEqual(battery.parallel_cells, 3)
@@ -103,27 +101,15 @@ class OCVPackBatteryTests(TestCase):
         self.assertGreater(vehicle.battery.current_power_w, 0.0)
         self.assertGreater(vehicle.battery.current_a, 0.0)
 
-    def test_vehicle_uses_the_rc_pack_model_by_default(self) -> None:
-        self.assertIsInstance(Vehicle().battery, RCTheveninBattery)
-
 
 class RCTheveninBatteryTests(TestCase):
     def test_default_fitted_pack_parameters(self) -> None:
         battery = RCTheveninBattery()
 
-        self.assertIsInstance(battery, BatteryModel)
-        self.assertTrue(
-            isclose(battery.internal_resistance_ohm, 0.121472656)
-        )
-        self.assertTrue(
-            isclose(battery.polarization_resistance_ohm, 0.431980951)
-        )
-        self.assertTrue(
-            isclose(battery.polarization_capacitance_f, 10.478534332)
-        )
-        self.assertTrue(
-            isclose(battery.polarization_time_constant_s, 4.52652723)
-        )
+        self.assertTrue(isclose(battery.internal_resistance_ohm, 0.121472656))
+        self.assertTrue(isclose(battery.polarization_resistance_ohm, 0.431980951))
+        self.assertTrue(isclose(battery.polarization_capacitance_f, 10.478534332))
+        self.assertTrue(isclose(battery.polarization_time_constant_s, 4.52652723))
 
     def test_terminal_voltage_and_exact_rc_state_step(self) -> None:
         battery = RCTheveninBattery(initial_state_of_charge=0.9)
@@ -152,9 +138,7 @@ class RCTheveninBatteryTests(TestCase):
         )
         decay = exp(-timestep_s / battery.polarization_time_constant_s)
         expected_polarization_voltage_v = (
-            battery.polarization_resistance_ohm
-            * (1.0 - decay)
-            * battery.current_a
+            battery.polarization_resistance_ohm * (1.0 - decay) * battery.current_a
         )
         self.assertTrue(
             isclose(

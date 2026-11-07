@@ -1,7 +1,7 @@
 # Real acceleration log validation
 
 > Status note: the explicit-slip experiment documented below was subsequently
-> removed from the simulator. The current distance-domain model uses the
+> removed from the simulator. The current time-domain model uses the
 > no-slip point-mass baseline; these results are retained for comparison only.
 
 ## Post-slip-model rerun

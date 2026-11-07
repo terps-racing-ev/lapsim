@@ -28,6 +28,7 @@ from vehicle_model import (  # noqa: E402
     Pacejka52UpcR20LongitudinalModel,
     Tire,
     Vehicle,
+    WheelAlignment,
 )
 
 
@@ -48,9 +49,12 @@ def upc_r20_vehicle(
         tire=Tire(
             pacejka_lateral=Pacejka52UpcR20LateralModel(),
             pacejka_longitudinal=Pacejka52UpcR20LongitudinalModel(),
-            camber_angle_rad=radians(camber_deg),
             inflation_pressure_pa=tire_pressure_psi * PSI_TO_PA,
-        )
+        ),
+        alignment=WheelAlignment(
+            front_static_camber_angle_rad=radians(camber_deg),
+            rear_static_camber_angle_rad=radians(camber_deg),
+        ),
     )
 
 

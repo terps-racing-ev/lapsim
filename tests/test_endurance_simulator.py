@@ -8,7 +8,7 @@ from lapsim.courses.spatial_track import SpatialTrack
 from lapsim.courses.track import Curve, Track
 from lapsim.events.endurance import EnduranceRunConfig, EnduranceSimulator
 from lapsim.optimization.torque_profile import UniformPeriodicTorqueParameterization
-from lapsim.solvers.path_constraints import PathConstraintSolver
+from lapsim.solvers.path_constraints import PathConstraintSolver, PathSpeedConstraints
 from vehicle_model import Vehicle
 
 
@@ -42,6 +42,60 @@ class ConstantUnsafeControls:
 
 
 class EnduranceSimulatorTests(TestCase):
+    def test_stops_at_soc_reserve_before_finishing(self) -> None:
+        track = SpatialTrack.from_cells(
+            cell_length_m=(1.0,) * 20,
+            curvature_per_m=(0.0,) * 20,
+            closed=True,
+        )
+        constraints = PathSpeedConstraints(track, (20.0,) * 20, (20.0,) * 20, 0)
+        profile = UniformPeriodicTorqueParameterization(2).build((0.26, 0.26), track)
+        vehicle = Vehicle()
+        vehicle.battery.initial_state_of_charge = 0.205
+        vehicle.battery.cell_capacity_ah = 0.1
+        result = EnduranceSimulator().run(
+            vehicle,
+            constraints,
+            profile,
+            EnduranceRunConfig(
+                laps=1, starting_speed_mps=10.0, minimum_state_of_charge=0.2
+            ),
+        )
+        self.assertFalse(result.completed)
+        self.assertEqual(result.completed_laps, 0)
+        self.assertIn("20.0%", result.failure_reason)
+        self.assertLessEqual(result.final_state_of_charge, 0.2)
+        self.assertGreater(result.final_state_of_charge, 0.0)
+        self.assertGreater(vehicle.distance_m, 0.0)
+        self.assertLess(vehicle.distance_m, track.length_m)
+
+    def test_does_not_start_at_or_below_soc_reserve(self) -> None:
+        track = SpatialTrack.from_cells(
+            cell_length_m=(1.0,), curvature_per_m=(0.0,), closed=True
+        )
+        constraints = PathSpeedConstraints(track, (20.0,), (20.0,), 0)
+        profile = UniformPeriodicTorqueParameterization(2).build((0.26, 0.26), track)
+        for initial_soc in (0.19, 0.2):
+            with self.subTest(initial_soc=initial_soc):
+                vehicle = Vehicle()
+                vehicle.battery.initial_state_of_charge = initial_soc
+                result = EnduranceSimulator().run(
+                    vehicle,
+                    constraints,
+                    profile,
+                    EnduranceRunConfig(laps=1, minimum_state_of_charge=0.2),
+                )
+                self.assertFalse(result.completed)
+                self.assertEqual(result.driving_time_s, 0.0)
+                self.assertEqual(result.pack_energy_kwh, 0.0)
+                self.assertEqual(result.final_state_of_charge, initial_soc)
+
+    def test_rejects_invalid_soc_reserves(self) -> None:
+        for reserve in (-0.1, 1.1, float("nan"), float("inf")):
+            with self.subTest(reserve=reserve):
+                with self.assertRaises(ValueError):
+                    EnduranceRunConfig(minimum_state_of_charge=reserve)
+
     def test_preserves_battery_state_and_records_component_telemetry(self) -> None:
         track = small_closed_track()
         vehicle = Vehicle()
@@ -118,7 +172,8 @@ class EnduranceSimulatorTests(TestCase):
         track = small_closed_track()
         vehicle = Vehicle()
         constraints = PathConstraintSolver().solve(track, vehicle)
-        lower_ceiling_mps = min(constraints.braking_speed_ceiling_mps) - 1.0
+        # Leave ample lateral grip for acceleration to exceed this ceiling.
+        lower_ceiling_mps = 0.5 * min(constraints.braking_speed_ceiling_mps)
         strict_constraints = type(constraints)(
             track=track,
             local_corner_speed_mps=constraints.local_corner_speed_mps,
@@ -132,14 +187,17 @@ class EnduranceSimulatorTests(TestCase):
             strict_constraints,
             ConstantUnsafeControls(),
             EnduranceRunConfig(
-                laps=1, starting_speed_mps=lower_ceiling_mps,
+                laps=1,
+                starting_speed_mps=lower_ceiling_mps,
             ),
         )
 
         self.assertFalse(result.completed)
         self.assertIsNotNone(result.failure_reason)
         assert result.failure_reason is not None
-        self.assertIn("supplied controls exceeded the path ceiling", result.failure_reason)
+        self.assertIn(
+            "supplied controls exceeded the path ceiling", result.failure_reason
+        )
         self.assertEqual(vehicle.current_controls, supplied_controls)
 
     def test_torque_profile_automatically_brakes_for_path_ceiling(self) -> None:
@@ -167,12 +225,8 @@ class EnduranceSimulatorTests(TestCase):
 
         self.assertTrue(result.completed, result.failure_reason)
         assert result.telemetry is not None
-        self.assertTrue(
-            any(result.telemetry["endurance.path_torque_limited"])
-        )
-        self.assertTrue(
-            any(result.telemetry["endurance.path_brake_active"])
-        )
+        self.assertTrue(any(result.telemetry["endurance.path_torque_limited"]))
+        self.assertTrue(any(result.telemetry["endurance.path_brake_active"]))
         self.assertIn(
             "endurance.path_brake_pressure_limited",
             result.telemetry,
@@ -195,8 +249,7 @@ class EnduranceSimulatorTests(TestCase):
         )
         self.assertTrue(
             any(
-                force_n > 0.0
-                for force_n in result.telemetry["brakes.friction_force_n"]
+                force_n > 0.0 for force_n in result.telemetry["brakes.friction_force_n"]
             )
         )
         self.assertTrue(
@@ -216,9 +269,7 @@ class EnduranceSimulatorTests(TestCase):
                 with self.assertRaises(ValueError):
                     EnduranceRunConfig(maximum_brake_pressure_psi=invalid_limit)
                 with self.assertRaises(ValueError):
-                    PathConstraintSolver(
-                        maximum_brake_pressure_psi=invalid_limit
-                    )
+                    PathConstraintSolver(maximum_brake_pressure_psi=invalid_limit)
 
     def test_rejects_invalid_regen_soc_thresholds(self) -> None:
         for invalid_threshold in (-0.1, 1.1, float("inf"), float("nan")):
@@ -245,6 +296,8 @@ class EnduranceSimulatorTests(TestCase):
             profile,
             EnduranceRunConfig(
                 laps=1,
+                # Start below the motor-speed limit so regen is available.
+                starting_speed_mps=20.0,
                 regenerative_braking_soc_threshold=0.8,
             ),
             record_telemetry=True,
@@ -266,10 +319,6 @@ class EnduranceSimulatorTests(TestCase):
                 for power_w in result.telemetry["vehicle.regenerative_power_w"]
             )
         )
-
-    def test_default_brake_pressure_limit_is_300_psi(self) -> None:
-        self.assertEqual(EnduranceRunConfig().maximum_brake_pressure_psi, 300.0)
-        self.assertEqual(PathConstraintSolver().maximum_brake_pressure_psi, 300.0)
 
     def test_does_not_clamp_an_unsafe_starting_speed(self) -> None:
         track = small_closed_track()

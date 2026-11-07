@@ -60,12 +60,18 @@ the finish line, while `scoring_time_s` begins when the vehicle reaches the
 timing line. Set `rollout_distance_m=0.0` only for a zero-rollout comparison.
 
 The same profile/track contract is accepted by `simulate_skidpad` and
-`simulate_endurance`. Endurance additionally accepts a normalized
-`TorqueProfile` for compatibility with the torque optimizer; that path uses
-the automatic braking controller.
+`simulate_endurance`. Skidpad uses the first profile sample as a numerical
+seed, then solves maximum steady speed, sustaining motor torque, steering
+angle, and body sideslip. At each trial speed it holds curvature fixed and
+balances longitudinal force, lateral force, and yaw moment directly. Scoring
+time is `2 * pi * radius / steady_speed`; warmup settings and track cell size
+only affect the reported telemetry and total run duration. Endurance uses the
+supplied controls throughout and additionally
+accepts a normalized `TorqueProfile` for the automatic braking controller.
 
 The standard skidpad helper uses a 9.125 m vehicle-path radius: the centerline
-between the 15.25 m inner circle and 21.25 m outer circle.
+between the 15.25 m inner circle and 21.25 m outer circle. Skidpad tracks must
+have constant nonzero curvature.
 
 ## Analysis entry points
 
@@ -80,6 +86,24 @@ python analysis/events/endurance_points.py
 
 Each script writes `<event>_summary.json` and `<event>_telemetry.csv`. Their
 `run(profile, track, ...)` functions return the same `EventResult` directly.
+
+For a 20% battery reserve, pass `--minimum-soc 0.2` to the endurance script,
+or set `EnduranceRunConfig(minimum_state_of_charge=0.2)`. The simulator checks
+the reserve before starting and after every spatial cell. Reaching the reserve
+ends the run with a failure reason; only completed laps receive lap credit.
+The final SOC can be slightly below the limit by one cell's discharge.
+This is a stopping constraint, not an automatic strategy to conserve energy.
+The default minimum remains zero for existing scenarios. `--initial-soc` and
+`--speed-cap-mps` allow the initial charge and pace cap to be specified explicitly.
+Endurance results expose initial, minimum, and final SOC in `point_breakdown`.
+
+`python analysis/endurance/project_soc_reserve.py --minimum-soc 0.2` checks
+the simpler repeated-lap pace projection against a continuously evolving RC
+battery. It rejects any pace that crosses the reserve or requests more power
+than the evolving pack can supply, and searches global speed caps for the best
+feasible combined score. These are quasi-static projections, separate from
+full vehicle/path-controller validation. Outputs include every evaluated pace,
+the chosen pace, SOC, energy, and scoring breakdown.
 
 ## Scoring references
 

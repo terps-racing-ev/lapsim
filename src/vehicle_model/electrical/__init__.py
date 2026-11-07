@@ -1,6 +1,7 @@
 """Electrical subteam models: accumulator and inverter."""
 
-from .battery import Battery, OCVPackBattery, RCTheveninBattery
+from .battery_ideal import Battery
+from .battery_pack import OCVPackBattery, RCTheveninBattery
 from .inverter import Inverter
 
 __all__ = [

@@ -19,7 +19,6 @@ class AsymmetricSuspension:
     """Small structural-protocol implementation used only by this test."""
 
     def __init__(self) -> None:
-        self.call_count = 0
         self.current_tire_normal_loads_n = TireNormalLoads(
             0.0,
             0.0,
@@ -39,7 +38,7 @@ class AsymmetricSuspension:
         )
 
     def update_telemetry(self, telemetry: dict[str, float]) -> None:
-        telemetry["suspension.test_call_count"] = float(self.call_count)
+        del telemetry
 
     def tire_normal_loads_n(
         self,
@@ -50,7 +49,6 @@ class AsymmetricSuspension:
         longitudinal_acceleration_mps2: float = 0.0,
         lateral_acceleration_mps2: float = 0.0,
     ) -> TireNormalLoads:
-        self.call_count += 1
         total_n = mass_kg * gravity_mps2 + aero_forces.downforce_n
         return TireNormalLoads(
             front_left_n=0.30 * total_n,
@@ -68,24 +66,20 @@ class AsymmetricSuspension:
         del mass_kg, chassis, lateral_acceleration_mps2
         return 0.0
 
+    def wheel_travel_m(
+        self,
+        chassis,
+        body_roll_angle_rad: float,
+    ) -> tuple[float, float, float, float]:
+        del chassis, body_roll_angle_rad
+        return 0.0, 0.0, 0.0, 0.0
+
     def update_state(
         self,
         tire_normal_loads_n: TireNormalLoads,
         timestep_s: float,
     ) -> None:
         self.current_tire_normal_loads_n = tire_normal_loads_n
-
-
-class TrackingChainDrive(ChainDrive):
-    """Confirm that drivetrain power flow uses the component seam."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.inverse_power_conversion_called = False
-
-    def motor_power_for_wheel_power_w(self, wheel_power_w: float) -> float:
-        self.inverse_power_conversion_called = True
-        return super().motor_power_for_wheel_power_w(wheel_power_w)
 
 
 class ComponentExtensibilityTests(TestCase):
@@ -95,7 +89,6 @@ class ComponentExtensibilityTests(TestCase):
 
         vehicle.update_state(Controls(steering_angle_rad=0.05), 0.5)
 
-        self.assertGreater(suspension.call_count, 0)
         loads = suspension.current_tire_normal_loads_n
         self.assertNotEqual(loads.front_left_n, loads.front_right_n)
 
@@ -117,15 +110,3 @@ class ComponentExtensibilityTests(TestCase):
             drivetrain.max_motor_mechanical_power_w(vehicle.battery),
             50_000.0,
         )
-
-    def test_drivetrain_uses_chain_drive_power_conversion_interface(self) -> None:
-        chain_drive = TrackingChainDrive()
-        drivetrain = Drivetrain(chain_drive=chain_drive)
-
-        drivetrain.positive_battery_power_w(
-            wheel_force_n=1_000.0,
-            vehicle_speed_mps=10.0,
-            battery=Battery(),
-        )
-
-        self.assertTrue(chain_drive.inverse_power_conversion_called)

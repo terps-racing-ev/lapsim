@@ -1,4 +1,4 @@
-"""Driver control inputs for distance-domain vehicle simulation."""
+"""Driver control inputs for time-domain vehicle simulation."""
 
 from dataclasses import dataclass
 from math import pi

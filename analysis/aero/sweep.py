@@ -177,8 +177,12 @@ def solve_point(
                 "lift_coefficient": lift_coefficient,
                 "drag_coefficient": drag_coefficient,
                 "frontal_area_m2": frontal_area_m2,
-                "drag_area_m2": vehicle.aero.drag_area_m2,
-                "downforce_area_m2": vehicle.aero.downforce_area_m2,
+                "drag_area_m2": (
+                    vehicle.aero.drag_coefficient * vehicle.aero.frontal_area_m2
+                ),
+                "downforce_area_m2": (
+                    -vehicle.aero.lift_coefficient * vehicle.aero.frontal_area_m2
+                ),
                 "motor_peak_power_w": vehicle.drivetrain.motor.peak_power_w,
                 "speed_cap_mps": pace_mps,
                 "lap_time_s": lap.lap_time_s,

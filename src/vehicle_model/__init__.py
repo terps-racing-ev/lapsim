@@ -16,14 +16,15 @@ from .interfaces import (
     ChainDriveModel,
     ComponentModel,
     DrivetrainModel,
-    FinalDriveModel,
     InverterModel,
     MotorModel,
     SuspensionModel,
     TireModel,
+    WheelAlignmentModel,
 )
 from .mech import (
     Brakes,
+    CamberGainCurve,
     Chassis,
     Pacejka52UpcR20LateralModel,
     Pacejka52UpcR20LongitudinalModel,
@@ -32,11 +33,16 @@ from .mech import (
     Tire,
     TireCornerValues,
     TireForces,
+    TireKinematics,
     TireNormalLoads,
     TireState,
     TireStates,
+    WheelAlignment,
+    WheelAlignmentCorner,
+    WheelAlignmentState,
+    WheelKinematics,
 )
-from .powertrain import ChainDrive, Drivetrain, FinalDrive, Motor
+from .powertrain import ChainDrive, Drivetrain, Motor, MotorEfficiencyMap
 from .vehicle import Vehicle
 
 __all__ = [
@@ -51,6 +57,7 @@ __all__ = [
     "RCTheveninBattery",
     "BrakeModel",
     "Brakes",
+    "CamberGainCurve",
     "Chassis",
     "ChassisModel",
     "ChainDrive",
@@ -58,11 +65,10 @@ __all__ = [
     "ComponentModel",
     "Drivetrain",
     "DrivetrainModel",
-    "FinalDrive",
-    "FinalDriveModel",
     "Inverter",
     "InverterModel",
     "Motor",
+    "MotorEfficiencyMap",
     "MotorModel",
     "Pacejka52UpcR20LateralModel",
     "Pacejka52UpcR20LongitudinalModel",
@@ -72,9 +78,15 @@ __all__ = [
     "Tire",
     "TireCornerValues",
     "TireForces",
+    "TireKinematics",
     "TireModel",
+    "WheelAlignmentModel",
     "TireNormalLoads",
     "TireState",
     "TireStates",
     "Vehicle",
+    "WheelAlignment",
+    "WheelAlignmentCorner",
+    "WheelAlignmentState",
+    "WheelKinematics",
 ]

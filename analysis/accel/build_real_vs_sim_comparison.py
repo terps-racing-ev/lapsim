@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from lapsim import Controls  # noqa: E402
+from lapsim.core.integration import advance_vehicle_by_distance  # noqa: E402
 from vehicle_model import RCTheveninBattery, Vehicle  # noqa: E402
 
 
@@ -110,7 +111,7 @@ def _simulate(
             rear_brake_pressure_psi=max(0.0, rear_psi),
         )
         step_m = min(distance_step_m, COURSE_DISTANCE_M - vehicle.distance_m)
-        vehicle.update_state(controls, step_m)
+        advance_vehicle_by_distance(vehicle, controls, step_m)
         rows.append(_simulation_row(vehicle, requested, front_psi, rear_psi))
         if vehicle.time_s > 10.0:
             raise RuntimeError("simulation did not finish within 10 seconds")

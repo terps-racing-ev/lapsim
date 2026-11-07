@@ -51,6 +51,7 @@ class ComponentTelemetryTests(TestCase):
             "brakes",
             "chassis",
             "suspension",
+            "alignment",
             "tire",
         }
         self.assertTrue(
@@ -59,23 +60,31 @@ class ComponentTelemetryTests(TestCase):
             )
         )
         self.assertEqual(snapshot["tire.rolling_radius_m"], 0.2032)
-        self.assertEqual(
-            snapshot["drivetrain.rolling_radius_m"],
-            snapshot["tire.rolling_radius_m"],
-        )
+        self.assertNotIn("vehicle.requested_curvature_per_m", snapshot)
+        self.assertNotIn("vehicle.requested_lateral_force_n", snapshot)
         for position in ("front_left", "front_right", "rear_left", "rear_right"):
             self.assertIn(f"tire.{position}.normal_load_n", snapshot)
             self.assertIn(f"tire.{position}.longitudinal_force_n", snapshot)
             self.assertIn(f"tire.{position}.lateral_force_n", snapshot)
+            self.assertIn(f"tire.{position}.body_lateral_force_n", snapshot)
+            self.assertIn(f"tire.{position}.steering_angle_rad", snapshot)
+            self.assertIn(f"tire.{position}.camber_angle_rad", snapshot)
+            self.assertIn(f"tire.{position}.local_longitudinal_speed_mps", snapshot)
+            self.assertIn(f"tire.{position}.local_lateral_speed_mps", snapshot)
+            self.assertIn(f"tire.{position}.slip_angle_rad", snapshot)
             self.assertIn(f"tire.{position}.slip_ratio", snapshot)
+            self.assertIn(f"tire.{position}.wheel_angular_speed_radps", snapshot)
 
     def test_corner_grip_power_reduction_is_explained_by_limit_channels(self) -> None:
         vehicle = Vehicle(initial_speed_mps=20.0)
+        straight = Vehicle(initial_speed_mps=20.0)
+
+        straight.update_state(Controls(motor_torque_request_nm=100.0), 0.5)
 
         vehicle.update_state(
             Controls(
                 motor_torque_request_nm=100.0,
-                steering_angle_rad=0.3,
+                steering_angle_rad=0.2,
             ),
             0.5,
         )
@@ -91,7 +100,11 @@ class ComponentTelemetryTests(TestCase):
             snapshot["drivetrain.wheel_force_n"],
             snapshot["vehicle.requested_drive_force_n"],
         )
-        self.assertEqual(snapshot["battery.power_w"], 0.0)
+        self.assertGreater(snapshot["battery.power_w"], 0.0)
+        self.assertLess(
+            snapshot["battery.power_w"],
+            straight.telemetry_snapshot()["battery.power_w"],
+        )
 
     def test_replay_returns_mapping_with_component_channels(self) -> None:
         telemetry = replay_controls(

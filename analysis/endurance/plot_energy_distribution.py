@@ -73,8 +73,12 @@ def aero_summary(weight_lb: float) -> dict[str, object]:
         "frontal_area_m2": vehicle.aero.frontal_area_m2,
         "drag_coefficient": vehicle.aero.drag_coefficient,
         "lift_coefficient": vehicle.aero.lift_coefficient,
-        "drag_area_m2": vehicle.aero.drag_area_m2,
-        "downforce_area_m2": vehicle.aero.downforce_area_m2,
+        "drag_area_m2": (
+            vehicle.aero.drag_coefficient * vehicle.aero.frontal_area_m2
+        ),
+        "downforce_area_m2": (
+            -vehicle.aero.lift_coefficient * vehicle.aero.frontal_area_m2
+        ),
         "drag_at_cd_2_5_n_for_comparison": (
             baseline_drag_n * 2.5 / vehicle.aero.drag_coefficient
         ),

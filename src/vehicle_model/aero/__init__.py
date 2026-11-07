@@ -1,5 +1,8 @@
-"""Aerodynamics subteam models and force data."""
+"""Aerodynamic force models and active deployment policy."""
 
-from .model import ActiveAero, ActiveAeroMode, Aero, AeroForces
+from .active import ActiveAero
+from .forces import AeroForces
+from .parameters import ActiveAeroMode
+from .passive import Aero
 
 __all__ = ["ActiveAero", "ActiveAeroMode", "Aero", "AeroForces"]

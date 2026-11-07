@@ -1,4 +1,4 @@
-"""Tests for distance-domain vehicle state updates."""
+"""Tests for time-domain vehicle state updates."""
 
 from math import isclose
 from unittest import TestCase
@@ -8,17 +8,7 @@ from vehicle_model.vehicle import Vehicle
 
 
 class VehicleStateUpdateTests(TestCase):
-    def test_current_vehicle_parameters_are_the_defaults(self) -> None:
-        vehicle = Vehicle()
-
-        self.assertTrue(isclose(vehicle.mass_kg, 285.7631931))
-        self.assertEqual(vehicle.aero.drag_coefficient, 2.4)
-        self.assertEqual(vehicle.drivetrain.chain_drive.efficiency, 0.80)
-        self.assertEqual(vehicle.drivetrain.motor.rotor_inertia_kgm2, 0.02521)
-        self.assertEqual(vehicle.cornering_drag_coefficient, 0.036)
-        self.assertIsNone(vehicle.tire.constant_friction_coefficient)
-
-    def test_spatial_braking_converges_independently_of_previous_acceleration(
+    def test_braking_converges_independently_of_previous_acceleration(
         self,
     ) -> None:
         controls = Controls(
@@ -60,8 +50,8 @@ class VehicleStateUpdateTests(TestCase):
 
         self.assertLess(vehicle.speed_mps, accelerated_speed_mps)
         self.assertGreaterEqual(vehicle.speed_mps, 0.0)
-        self.assertEqual(vehicle.brakes.current_front_pressure_psi, 300.0)
-        self.assertEqual(vehicle.brakes.current_rear_pressure_psi, 300.0)
+        self.assertEqual(vehicle.brakes.current_front_pressure_psi, 800.0)
+        self.assertEqual(vehicle.brakes.current_rear_pressure_psi, 800.0)
 
         vehicle.reset_state()
         self.assertEqual(vehicle.time_s, 0.0)
@@ -76,21 +66,37 @@ class VehicleStateUpdateTests(TestCase):
         self.assertGreater(vehicle.heading_rad, 0.0)
         self.assertGreater(vehicle.y_m, 0.0)
         self.assertGreater(vehicle.lateral_acceleration_mps2, 0.0)
-
-    def test_distance_step_is_accumulated_and_timestep_is_internal(self) -> None:
-        vehicle = Vehicle(initial_speed_mps=10.0)
-        controls = Controls(motor_torque_request_nm=10.0)
-        distance_step_m = 0.125
-        vehicle.update_state(controls, distance_step_m)
-
-        self.assertTrue(isclose(vehicle.distance_m, distance_step_m))
+        self.assertAlmostEqual(
+            vehicle.curvature_per_m,
+            vehicle.lateral_acceleration_mps2 / 10.0**2,
+        )
         self.assertTrue(
-            isclose(
-                vehicle.time_s,
-                2.0 * distance_step_m / (10.0 + vehicle.speed_mps),
+            all(state.slip_angle_rad < 0.0 for state in vehicle.tire.current_states.all)
+        )
+        self.assertTrue(
+            all(
+                state.lateral_force_n > 0.0 for state in vehicle.tire.current_states.all
             )
         )
-        self.assertIs(vehicle.current_controls, controls)
+        self.assertNotEqual(
+            vehicle.tire.current_states.front_left.local_longitudinal_speed_mps,
+            vehicle.tire.current_states.front_right.local_longitudinal_speed_mps,
+        )
+        self.assertNotEqual(
+            vehicle.tire.current_states.front_left.steering_angle_rad,
+            vehicle.tire.current_states.front_right.steering_angle_rad,
+        )
+
+    def test_timestep_is_accumulated_and_distance_is_integrated(self) -> None:
+        vehicle = Vehicle(initial_speed_mps=10.0)
+        controls = Controls(motor_torque_request_nm=10.0)
+        timestep_s = 0.125
+        vehicle.update_state(controls, timestep_s)
+
+        self.assertTrue(isclose(vehicle.time_s, timestep_s))
+        self.assertTrue(
+            isclose(vehicle.distance_m, 0.5 * (10.0 + vehicle.speed_mps) * timestep_s)
+        )
 
     def test_speed_limiter_holds_speed_without_cutting_all_torque(self) -> None:
         vehicle = Vehicle(initial_speed_mps=5.0)
@@ -99,7 +105,7 @@ class VehicleStateUpdateTests(TestCase):
         vehicle.update_state(Controls(motor_torque_request_nm=230.0), 0.01)
 
         self.assertTrue(isclose(vehicle.speed_mps, 5.0, abs_tol=1e-9))
-        self.assertGreater(vehicle.drivetrain.current_motor_torque_nm, 0.0)
+        self.assertGreater(vehicle.drivetrain.motor.current_torque_nm, 0.0)
 
     def test_brake_pressure_is_converted_to_force_and_clamped(self) -> None:
         vehicle = Vehicle(initial_speed_mps=10.0)
@@ -183,33 +189,33 @@ class VehicleStateUpdateTests(TestCase):
         self.assertGreater(with_cornering_drag.current_cornering_drag_force_n, 0.0)
         self.assertLess(with_cornering_drag.speed_mps, baseline.speed_mps)
 
-    def test_nonpositive_distance_step_is_rejected(self) -> None:
+    def test_nonpositive_timestep_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             Vehicle().update_state(Controls(), -0.1)
 
-    def test_rest_without_drive_cannot_traverse_a_spatial_cell(self) -> None:
+    def test_rest_without_drive_advances_time_without_moving(self) -> None:
         vehicle = Vehicle()
 
-        with self.assertRaisesRegex(ValueError, "cannot traverse"):
-            vehicle.update_state(Controls(), 0.1)
+        vehicle.update_state(Controls(), 0.1)
 
         self.assertEqual(vehicle.distance_m, 0.0)
-        self.assertEqual(vehicle.time_s, 0.0)
+        self.assertEqual(vehicle.time_s, 0.1)
+        self.assertEqual(vehicle.speed_mps, 0.0)
 
-    def test_stopping_before_cell_end_is_rejected_without_partial_commit(self) -> None:
+    def test_vehicle_stops_during_step_without_reversing(self) -> None:
         vehicle = Vehicle(initial_speed_mps=1.0)
 
-        with self.assertRaisesRegex(ValueError, "stops before"):
-            vehicle.update_state(
-                Controls(
-                    front_brake_pressure_psi=1_000_000.0,
-                    rear_brake_pressure_psi=1_000_000.0,
-                ),
-                10.0,
-            )
+        vehicle.update_state(
+            Controls(
+                front_brake_pressure_psi=1_000_000.0,
+                rear_brake_pressure_psi=1_000_000.0,
+            ),
+            10.0,
+        )
 
-        self.assertEqual(vehicle.distance_m, 0.0)
-        self.assertEqual(vehicle.time_s, 0.0)
+        self.assertGreater(vehicle.distance_m, 0.0)
+        self.assertEqual(vehicle.time_s, 10.0)
+        self.assertEqual(vehicle.speed_mps, 0.0)
 
     def test_rotational_inertia_reduces_acceleration(self) -> None:
         vehicle_with_inertia = Vehicle()

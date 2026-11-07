@@ -51,7 +51,7 @@ braking when needed to stay below the path ceiling. Therefore braking is not
 an extra optimizer variable, and a profile that stays on throttle too long is
 penalized through wasted energy.
 
-The automatic controller and brake hardware default to a 300 psi front/rear
+The automatic controller and brake hardware default to an 800 psi front/rear
 hydraulic limit. Set `EnduranceRunConfig.maximum_brake_pressure_psi` lower for
 restricted studies. `EnduranceTorqueOptimizer`
 passes that same limit into its path-constraint solver, so the backward pass

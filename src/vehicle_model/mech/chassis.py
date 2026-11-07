@@ -20,9 +20,7 @@ DEFAULT_FRONT_TRACK_WIDTH_M = inches_to_meters(DEFAULT_FRONT_TRACK_WIDTH_IN)
 DEFAULT_REAR_TRACK_WIDTH_M = inches_to_meters(DEFAULT_REAR_TRACK_WIDTH_IN)
 DEFAULT_FRONT_AXLE_HEIGHT_M = inches_to_meters(DEFAULT_FRONT_AXLE_HEIGHT_IN)
 DEFAULT_REAR_AXLE_HEIGHT_M = inches_to_meters(DEFAULT_REAR_AXLE_HEIGHT_IN)
-DEFAULT_FRONT_ROLL_AXIS_HEIGHT_M = inches_to_meters(
-    DEFAULT_FRONT_ROLL_AXIS_HEIGHT_IN
-)
+DEFAULT_FRONT_ROLL_AXIS_HEIGHT_M = inches_to_meters(DEFAULT_FRONT_ROLL_AXIS_HEIGHT_IN)
 DEFAULT_REAR_ROLL_AXIS_HEIGHT_M = inches_to_meters(DEFAULT_REAR_ROLL_AXIS_HEIGHT_IN)
 DEFAULT_STATIC_FRONT_WEIGHT_FRACTION = 0.47
 
@@ -69,6 +67,34 @@ class Chassis:
     def reset_state(self) -> None:
         """The baseline chassis has no dynamic state."""
 
+    @property
+    def front_axle_distance_from_cg_m(self) -> float:
+        return self.wheelbase_m * (1.0 - self.static_front_weight_fraction)
+
+    @property
+    def rear_axle_distance_from_cg_m(self) -> float:
+        return self.wheelbase_m * self.static_front_weight_fraction
+
+    @property
+    def wheel_positions_m(
+        self,
+    ) -> tuple[
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
+        tuple[float, float],
+    ]:
+        """Return body-frame ``(x, y)`` positions for all four wheels."""
+
+        front_x_m = self.front_axle_distance_from_cg_m
+        rear_x_m = -self.rear_axle_distance_from_cg_m
+        return (
+            (front_x_m, 0.5 * self.front_track_width_m),
+            (front_x_m, -0.5 * self.front_track_width_m),
+            (rear_x_m, 0.5 * self.rear_track_width_m),
+            (rear_x_m, -0.5 * self.rear_track_width_m),
+        )
+
     def update_telemetry(self, telemetry: dict[str, float]) -> None:
         telemetry.update(
             {
@@ -78,9 +104,7 @@ class Chassis:
                 "chassis.rear_track_width_m": self.rear_track_width_m,
                 "chassis.front_axle_height_m": self.front_axle_height_m,
                 "chassis.rear_axle_height_m": self.rear_axle_height_m,
-                "chassis.front_roll_axis_height_m": (
-                    self.front_roll_axis_height_m
-                ),
+                "chassis.front_roll_axis_height_m": (self.front_roll_axis_height_m),
                 "chassis.rear_roll_axis_height_m": self.rear_roll_axis_height_m,
                 "chassis.static_front_weight_fraction": (
                     self.static_front_weight_fraction

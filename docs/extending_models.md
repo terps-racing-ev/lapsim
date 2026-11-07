@@ -32,12 +32,14 @@ from vehicle_model import Vehicle
 from vehicle_model.electrical import RCTheveninBattery
 from vehicle_model.powertrain import Drivetrain, Motor
 from vehicle_model.aero import Aero
-from vehicle_model.mech import Suspension, Tire
+from vehicle_model.mech import Suspension, Tire, WheelAlignment
 ```
 
 Put a new implementation beside the baseline owned by the same subteam. Keep
-cross-subteam coordination in `vehicle.py` or `powertrain/drivetrain.py`, not
-in a solver.
+cross-subteam orchestration in `vehicle.py`, coupled vehicle force balance in
+`dynamics.py`, and drivetrain power conversion in `powertrain`. The
+[vehicle model guide](vehicle_model.md) maps the internal calculation modules
+for each subsystem; event and lap solvers consume these model boundaries.
 
 For an incremental model, subclassing the baseline is convenient. This example
 adds a motor temperature and thermal torque derating while retaining the
@@ -114,6 +116,7 @@ protocol directly. Useful contracts are:
 | `BatteryModel` | pack-terminal power limiting and state update |
 | `TireModel` | acceleration, cornering, and braking limits |
 | `SuspensionModel` | four tire normal loads |
+| `WheelAlignmentModel` | per-wheel steer, camber, and suspension travel state |
 | `AeroModel` | drag and axle downforce |
 | `DrivetrainModel` | `Vehicle` and both spatial solvers |
 
@@ -128,7 +131,7 @@ subteam package for baseline validation conventions.
 3. Implement `reset_state()` so repeated simulations are independent.
 4. Keep limit queries free of unrelated side effects.
 5. Apply component dynamic state changes in `update_state(..., timestep_s)`;
-   `Vehicle` supplies the internal timestep derived from its spatial cell.
+   `Vehicle` supplies the caller-provided simulation timestep unchanged.
 6. Write current scalar signals in `update_telemetry(...)` using a stable
    component namespace.
 7. Return shared result dataclasses at component boundaries.
@@ -161,6 +164,3 @@ for ratio in (3.3, 3.455, 3.6, 3.8):
     vehicle.validate()
     # Run a solver and store the result here.
 ```
-
-Compatibility aliases such as `drivetrain.final_drive_ratio` remain available
-for older scripts. New code should use `drivetrain.chain_drive.ratio`.

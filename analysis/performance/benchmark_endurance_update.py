@@ -45,6 +45,7 @@ from lapsim import (
     TorqueProfile,
     UniformPeriodicTorqueParameterization,
 )
+from lapsim.core.integration import advance_vehicle_by_distance
 from vehicle_model import Vehicle
 
 
@@ -233,7 +234,8 @@ def build_reference_control_profile(
         def final_speed_mps(pressure_psi: float) -> float:
             candidate = deepcopy(vehicle)
             try:
-                candidate.update_state(
+                advance_vehicle_by_distance(
+                    candidate,
                     replace(
                         base_controls,
                         front_brake_pressure_psi=pressure_psi,
@@ -269,7 +271,7 @@ def build_reference_control_profile(
             front_brake_pressure_psi=pressure_psi,
             rear_brake_pressure_psi=pressure_psi,
         )
-        vehicle.update_state(controls, distance_step_m)
+        advance_vehicle_by_distance(vehicle, controls, distance_step_m)
         controls_by_cell.append(controls)
 
     return (

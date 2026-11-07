@@ -82,9 +82,7 @@ class EventSimulationTests(TestCase):
 
     def test_acceleration_scores_after_default_rollout(self) -> None:
         track = open_straight()
-        profile = ConstantControlsProfile(
-            Controls(motor_torque_request_nm=230.0)
-        )
+        profile = ConstantControlsProfile(Controls(motor_torque_request_nm=230.0))
 
         with_rollout = simulate_acceleration(Vehicle(), track, profile)
         without_rollout = simulate_acceleration(
@@ -137,8 +135,18 @@ class EventSimulationTests(TestCase):
         self.assertEqual(len(result.lap_times_s), 2)
         self.assertAlmostEqual(result.scoring_time_s, result.lap_times_s[-1])
         self.assertGreater(result.telemetry.sample_count, 0)
-        requested_curvature = result.telemetry["vehicle.requested_curvature_per_m"]
-        self.assertTrue(all(value > 0.0 for value in requested_curvature))
+        self.assertTrue(
+            all(
+                abs(value - 1.0 / 25.0) < 1e-6
+                for value in result.telemetry["vehicle.achieved_curvature_per_m"]
+            )
+        )
+        self.assertTrue(
+            all(
+                abs(value) < 0.02
+                for value in result.telemetry["vehicle.longitudinal_acceleration_mps2"]
+            )
+        )
 
     def test_endurance_wraps_existing_physics_in_common_event_result(self) -> None:
         track = closed_circle()

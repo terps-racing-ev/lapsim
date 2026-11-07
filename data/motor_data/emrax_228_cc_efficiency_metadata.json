@@ -1,0 +1,80 @@
+{
+  "source_url": "https://emrax.com/wp-content/uploads/2020/03/emrax_228_technical_data_table_graphs_5.4.pdf",
+  "source_pdf": "emrax_228_technical_data_table_graphs_5.4.pdf",
+  "source_page_one_based": 2,
+  "source_pdf_sha256": "2f9432c2c5d652e210c5b77977098a92e5d2b950cff500a9e658010e2b2c7897",
+  "source_chart": "EMRAX 228 CC - Efficiency map",
+  "applicability": "Combined cooled, shared chart alongside HV/MV/LV performance graph",
+  "image_size_px": [
+    914,
+    659
+  ],
+  "calibration": {
+    "x_px": [
+      70,
+      894
+    ],
+    "speed_rpm": [
+      0,
+      5500
+    ],
+    "y_px": [
+      94,
+      588
+    ],
+    "torque_nm": [
+      250,
+      0
+    ]
+  },
+  "extraction": "Exact RGB masks; largest 8-connected component removes text; per-column line centers",
+  "coordinate_uncertainty_px": 2,
+  "approximate_coordinate_uncertainty_rpm": 13.3,
+  "approximate_coordinate_uncertainty_nm": 1.01,
+  "grid_step_rpm": 100,
+  "grid_step_nm": 5,
+  "grid_rows": 2856,
+  "grid_method": "Point-in-polygon classification only; no scalar efficiency interpolation or extrapolation",
+  "contours": [
+    {
+      "region_id": "outer",
+      "source_region_label": "86-90%",
+      "selected_color_pixels": 3869,
+      "digitized_points": 1566,
+      "right_edge_closure": false
+    },
+    {
+      "region_id": "purple",
+      "source_region_label": "90-94%",
+      "selected_color_pixels": 3494,
+      "digitized_points": 1448,
+      "right_edge_closure": true
+    },
+    {
+      "region_id": "green",
+      "source_region_label": "94%",
+      "selected_color_pixels": 3197,
+      "digitized_points": 1338,
+      "right_edge_closure": true
+    },
+    {
+      "region_id": "red",
+      "source_region_label": "95%",
+      "selected_color_pixels": 2420,
+      "digitized_points": 1040,
+      "right_edge_closure": false
+    },
+    {
+      "region_id": "blue",
+      "source_region_label": "96%",
+      "selected_color_pixels": 1536,
+      "digitized_points": 692,
+      "right_edge_closure": false
+    }
+  ],
+  "status_counts": {
+    "boundary_uncertain": 322,
+    "digitized_band": 1911,
+    "outside_published_region": 623
+  }
+}

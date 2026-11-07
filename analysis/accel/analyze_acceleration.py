@@ -37,6 +37,7 @@ from analysis.common import (  # noqa: E402
     read_numeric_csv,
 )
 from lapsim import SpatialTrack  # noqa: E402
+from lapsim.core.integration import advance_vehicle_by_distance  # noqa: E402
 from vehicle_model import RCTheveninBattery, Vehicle  # noqa: E402
 
 DEFAULT_CURVATURE_THRESHOLD_PER_M = 0.015
@@ -118,8 +119,9 @@ def simulate_straight(
     """Replay controls as functions of distance through ``Vehicle``.
 
     Torque and brake pressure are interpolated at the vehicle's current
-    simulated distance. ``Vehicle`` derives elapsed time internally from each
-    requested distance step, so recorded timestamps never select the controls.
+    simulated distance. The spatial adapter solves the time step that lands the
+    time-domain ``Vehicle`` update on each requested distance boundary, so
+    recorded timestamps never select the controls.
     """
 
     if spatial_step_m <= 0:
@@ -198,7 +200,7 @@ def simulate_straight(
         )
         distance_step_m = min(spatial_step_m, straight_end_m - start_distance_m)
         start_time_s = vehicle.time_s
-        vehicle.update_state(controls, float(distance_step_m))
+        advance_vehicle_by_distance(vehicle, controls, float(distance_step_m))
         telemetry = vehicle.telemetry_snapshot()
         output["sim_time_s"].append(start_time_s)
         fields["sim_distance_m"].append(start_distance_m)
@@ -1216,7 +1218,7 @@ def main() -> None:
             "torque_source": args.torque_source,
             "control_domain": "recorded controls interpolated by measured distance and queried at current simulated distance",
             "spatial_control_step_m": args.simulation_spatial_step_m,
-            "time_integration": "derived internally by Vehicle from each distance step",
+            "time_integration": "time step solved by the spatial adapter for each distance step",
             "motor_to_wheel_efficiency": (
                 args.motor_to_wheel_efficiency
                 if args.motor_to_wheel_efficiency is not None

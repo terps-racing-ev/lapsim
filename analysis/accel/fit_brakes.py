@@ -82,8 +82,16 @@ def main() -> None:
     lateral_acceleration_mps2 = imu["imu_lateral_accel_mps2"]
 
     dynamic_pressure_pa = 0.5 * vehicle.air_density_kgpm3 * speed_mps**2
-    drag_force_n = dynamic_pressure_pa * vehicle.aero.drag_area_m2
-    downforce_n = dynamic_pressure_pa * vehicle.aero.downforce_area_m2
+    drag_force_n = (
+        dynamic_pressure_pa
+        * vehicle.aero.drag_coefficient
+        * vehicle.aero.frontal_area_m2
+    )
+    downforce_n = (
+        -dynamic_pressure_pa
+        * vehicle.aero.lift_coefficient
+        * vehicle.aero.frontal_area_m2
+    )
     rolling_force_n = vehicle.rolling_resistance_coefficient * (
         vehicle.mass_kg * vehicle.gravity_mps2 + downforce_n
     )

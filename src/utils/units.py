@@ -30,6 +30,12 @@ def pound_force_inches_to_newton_meters(torque_lbfin: float) -> float:
     return torque_lbfin * NEWTONS_PER_POUND_FORCE * METERS_PER_INCH
 
 
+def pound_force_feet_to_newton_meters(torque_lbfft: float) -> float:
+    """Convert pound-force feet to newton metres."""
+
+    return torque_lbfft * NEWTONS_PER_POUND_FORCE * METERS_PER_FOOT
+
+
 def inches_to_meters(distance_in: float) -> float:
     """Convert inches to metres."""
 

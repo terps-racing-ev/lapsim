@@ -32,7 +32,10 @@ from utils.units import (  # noqa: E402
     KILOGRAMS_PER_POUND,
     meters_per_second_to_miles_per_hour,
     miles_per_hour_to_meters_per_second,
+    pounds_to_kilograms,
 )
+from math import isfinite
+
 from vehicle_model import ActiveAero, Vehicle  # noqa: E402
 
 
@@ -106,6 +109,8 @@ def calibrated_active_aero_vehicle(
     power_cap_kw: float = 40.0,
     speed_cap_mph: float = 40.0,
 ) -> Vehicle:
+    if not isfinite(mass_penalty_lb) or mass_penalty_lb < 0.0:
+        raise ValueError("mass_penalty_lb must be finite and nonnegative")
     aero = ActiveAero(
         drag_reduction_fraction=drag_reduction_fraction,
         downforce_reduction_fraction=downforce_reduction_fraction,
@@ -114,8 +119,10 @@ def calibrated_active_aero_vehicle(
         ),
         deployment_mode="automatic",
     )
-    vehicle = Vehicle.with_active_aero(
-        active_aero_mass_penalty_lb=mass_penalty_lb,
+    from vehicle_model.vehicle import DEFAULT_MASS_KG
+    base_mass_kg = DEFAULT_MASS_KG
+    vehicle = Vehicle(
+        mass_kg=base_mass_kg + pounds_to_kilograms(mass_penalty_lb),
         aero=aero,
     )
     vehicle.battery.initial_state_of_charge = DEFAULT_INITIAL_STATE_OF_CHARGE

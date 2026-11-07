@@ -2,8 +2,9 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from math import sqrt
+from math import atan, sqrt
 
+from vehicle_model.mech.loads import TireNormalLoads
 from vehicle_model.vehicle import Vehicle
 
 from .speed_limit import (
@@ -214,7 +215,7 @@ class LapTimeSolver:
         )
         aero_forces = self.vehicle.aero_forces_n(
             speed_mps,
-            speed_mps**2 * abs(curvature_per_m),
+            speed_mps**2 * curvature_per_m,
             self.air_density_kgpm3,
             curvature_per_m=curvature_per_m,
         )
@@ -223,7 +224,7 @@ class LapTimeSolver:
             self.gravity_mps2,
             aero_forces,
             self.vehicle.chassis,
-            lateral_acceleration_mps2=(speed_mps**2 * abs(curvature_per_m)),
+            lateral_acceleration_mps2=(speed_mps**2 * curvature_per_m),
         )
         motor_force_n = self.vehicle.drivetrain.available_wheel_force_n(
             speed_mps,
@@ -243,11 +244,16 @@ class LapTimeSolver:
                 aero_forces,
                 self.vehicle.chassis,
                 longitudinal_acceleration_mps2=acceleration_mps2,
-                lateral_acceleration_mps2=(speed_mps**2 * abs(curvature_per_m)),
+                lateral_acceleration_mps2=(speed_mps**2 * curvature_per_m),
+            )
+            alignment_state = self.vehicle.wheel_alignment_state(
+                atan(curvature_per_m * self.vehicle.chassis.wheelbase_m),
+                speed_mps**2 * curvature_per_m,
             )
             rear_traction_force_n = self._tire_force_capacity_n(
                 tire_normal_loads.rear_n,
                 lateral=False,
+                camber_angles_rad=alignment_state.camber_angles_rad[2:],
             )
             drive_force_n = min(
                 motor_force_n,
@@ -265,35 +271,64 @@ class LapTimeSolver:
         curvature_per_m: float,
         tire_normal_loads_n: Sequence[float],
     ) -> float:
-        lateral_force_n = self.vehicle.mass_kg * speed_mps**2 * abs(curvature_per_m)
-        lateral_force_limit_n = self._tire_force_capacity_n(
-            tire_normal_loads_n,
-            lateral=True,
+        lateral_acceleration_mps2 = speed_mps**2 * curvature_per_m
+        lateral_force_n = self.vehicle.mass_kg * abs(lateral_acceleration_mps2)
+        normal_loads = TireNormalLoads.from_iterable(tire_normal_loads_n)
+        alignment_state = self.vehicle.wheel_alignment_state(
+            atan(curvature_per_m * self.vehicle.chassis.wheelbase_m),
+            lateral_acceleration_mps2,
         )
-        if lateral_force_limit_n <= 0:
-            return 0.0
-        lateral_utilization = min(1.0, lateral_force_n / lateral_force_limit_n)
-        remaining_longitudinal_fraction = sqrt(max(0.0, 1.0 - lateral_utilization**2))
-        longitudinal_force_limit_n = self._tire_force_capacity_n(
-            tire_normal_loads_n,
-            lateral=False,
+        lateral_forces_n = self.vehicle.tire.lateral_forces_n(
+            normal_loads,
+            lateral_force_n,
+            front_lateral_force_fraction=(
+                self.vehicle.chassis.static_front_weight_fraction
+            ),
+            camber_angles_rad=alignment_state.camber_angles_rad,
         )
-        return longitudinal_force_limit_n * remaining_longitudinal_fraction
+        return sum(
+            self.vehicle.tire.combined_longitudinal_force_capacity_n(
+                normal_load_n,
+                tire_lateral_force_n,
+                camber_angle_rad,
+            )
+            for normal_load_n, tire_lateral_force_n, camber_angle_rad in zip(
+                tire_normal_loads_n,
+                lateral_forces_n.all_n,
+                alignment_state.camber_angles_rad,
+                strict=True,
+            )
+        )
 
     def _tire_force_capacity_n(
         self,
         tire_normal_loads_n: Sequence[float],
         *,
         lateral: bool,
+        camber_angles_rad: Sequence[float],
     ) -> float:
         if lateral:
             return sum(
-                self.vehicle.tire.lateral_force_capacity_n(normal_load_n)
-                for normal_load_n in tire_normal_loads_n
+                self.vehicle.tire.lateral_force_capacity_n(
+                    normal_load_n,
+                    camber_angle_rad,
+                )
+                for normal_load_n, camber_angle_rad in zip(
+                    tire_normal_loads_n,
+                    camber_angles_rad,
+                    strict=True,
+                )
             )
         return sum(
-            self.vehicle.tire.longitudinal_force_capacity_n(normal_load_n)
-            for normal_load_n in tire_normal_loads_n
+            self.vehicle.tire.longitudinal_force_capacity_n(
+                normal_load_n,
+                camber_angle_rad,
+            )
+            for normal_load_n, camber_angle_rad in zip(
+                tire_normal_loads_n,
+                camber_angles_rad,
+                strict=True,
+            )
         )
 
     def _resistance_and_downforce(
@@ -303,14 +338,14 @@ class LapTimeSolver:
     ) -> tuple[float, float, float]:
         aero_forces = self.vehicle.aero_forces_n(
             speed_mps,
-            speed_mps**2 * abs(curvature_per_m),
+            speed_mps**2 * curvature_per_m,
             self.air_density_kgpm3,
             curvature_per_m=curvature_per_m,
         )
         rolling_force_n = self.vehicle.rolling_resistance_coefficient * (
             self.vehicle.mass_kg * self.gravity_mps2 + aero_forces.downforce_n
         )
-        lateral_acceleration_mps2 = speed_mps**2 * abs(curvature_per_m)
+        lateral_acceleration_mps2 = speed_mps**2 * curvature_per_m
         normal_loads = self.vehicle.suspension.tire_normal_loads_n(
             self.vehicle.mass_kg,
             self.gravity_mps2,
@@ -319,7 +354,7 @@ class LapTimeSolver:
             lateral_acceleration_mps2=lateral_acceleration_mps2,
         )
         total_normal_force_n = sum(normal_loads.all_n)
-        lateral_force_n = self.vehicle.mass_kg * lateral_acceleration_mps2
+        lateral_force_n = self.vehicle.mass_kg * abs(lateral_acceleration_mps2)
         cornering_drag_force_n = 0.0
         if total_normal_force_n > 0.0:
             cornering_drag_force_n = (

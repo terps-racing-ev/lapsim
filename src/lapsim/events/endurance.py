@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import atan, isfinite
+from math import atan, copysign, isfinite
 
 from vehicle_model.mech.brakes import DEFAULT_MAXIMUM_BRAKE_PRESSURE_PSI
 from vehicle_model.vehicle import Vehicle
 
 from ..core.controls import Controls
+from ..core.integration import advance_vehicle_by_distance
 from ..core.telemetry import JOULES_PER_KILOWATT_HOUR, Telemetry, TelemetryRecorder
 from ..optimization.torque_profile import EnduranceControlProfile, TorqueProfile
 from ..solvers.path_constraints import PathSpeedConstraints
@@ -25,6 +26,7 @@ class EnduranceRunConfig:
     path_speed_tolerance_mps: float = 0.01
     maximum_brake_pressure_psi: float | None = DEFAULT_MAXIMUM_BRAKE_PRESSURE_PSI
     regenerative_braking_soc_threshold: float | None = None
+    minimum_state_of_charge: float = 0.0
 
     def __post_init__(self) -> None:
         if self.laps <= 0:
@@ -37,6 +39,11 @@ class EnduranceRunConfig:
             raise ValueError("minimum_moving_speed_mps must be positive")
         if self.path_speed_tolerance_mps <= 0:
             raise ValueError("path_speed_tolerance_mps must be positive")
+        if (
+            not isfinite(self.minimum_state_of_charge)
+            or not 0.0 <= self.minimum_state_of_charge <= 1.0
+        ):
+            raise ValueError("minimum_state_of_charge must be between zero and one")
         if self.maximum_brake_pressure_psi is not None and (
             not isfinite(self.maximum_brake_pressure_psi)
             or self.maximum_brake_pressure_psi <= 0.0
@@ -105,9 +112,14 @@ class EnduranceSimulator:
             longitudinal_acceleration_mps2=vehicle.longitudinal_acceleration_mps2,
             lateral_acceleration_mps2=lateral_acceleration_mps2,
         )
-        lateral_capacity_n = sum(
-            vehicle.tire.lateral_force_capacity_n(normal_load_n)
-            for normal_load_n in tire_normal_loads.all_n
+        alignment_state = vehicle.wheel_alignment_state(
+            atan(curvature_per_m * vehicle.chassis.wheelbase_m),
+            lateral_acceleration_mps2,
+        )
+        lateral_capacity_n = vehicle.tire.total_lateral_force_capacity_n(
+            tire_normal_loads,
+            vehicle.chassis.static_front_weight_fraction,
+            alignment_state.camber_angles_rad,
         )
         requested_lateral_force_n = (
             vehicle.mass_kg * speed_mps**2 * abs(curvature_per_m)
@@ -138,7 +150,10 @@ class EnduranceSimulator:
     ) -> tuple[float, float, float]:
         """Allocate friction and maximum-priority rear regen without losing grip."""
 
-        lateral_acceleration_mps2 = lateral_force_n / vehicle.mass_kg
+        lateral_acceleration_mps2 = copysign(
+            lateral_force_n / vehicle.mass_kg,
+            curvature_per_m,
+        )
         aero_forces = vehicle.aero_forces_n(
             vehicle.speed_mps,
             lateral_acceleration_mps2,
@@ -152,14 +167,28 @@ class EnduranceSimulator:
             longitudinal_acceleration_mps2=target_acceleration_mps2,
             lateral_acceleration_mps2=lateral_acceleration_mps2,
         )
+        alignment_state = vehicle.wheel_alignment_state(
+            atan(curvature_per_m * vehicle.chassis.wheelbase_m),
+            lateral_acceleration_mps2,
+        )
         tire_lateral_forces_n = vehicle.tire.lateral_forces_n(
-            tire_normal_loads, lateral_force_n
+            tire_normal_loads,
+            lateral_force_n,
+            front_lateral_force_fraction=(
+                vehicle.chassis.static_front_weight_fraction
+            ),
+            camber_angles_rad=alignment_state.camber_angles_rad,
         )
         tire_capacities_n = tuple(
-            vehicle.tire.combined_longitudinal_force_capacity_n(load_n, lateral_n)
-            for load_n, lateral_n in zip(
+            vehicle.tire.combined_longitudinal_force_capacity_n(
+                load_n,
+                lateral_n,
+                camber_angle_rad,
+            )
+            for load_n, lateral_n, camber_angle_rad in zip(
                 tire_normal_loads.all_n,
                 tire_lateral_forces_n.all_n,
+                alignment_state.camber_angles_rad,
                 strict=True,
             )
         )
@@ -365,8 +394,16 @@ class EnduranceSimulator:
         failure_reason: str | None = None
         lap_start_time_s = 0.0
         cell_lengths_m = track.cell_length_m
+        soc_failure_reason = (
+            "battery state of charge depleted"
+            if config.minimum_state_of_charge == 0.0
+            else f"battery minimum state of charge reached ({config.minimum_state_of_charge:.1%})"
+        )
 
         for lap_index in range(config.laps):
+            if vehicle.battery.state_of_charge <= config.minimum_state_of_charge:
+                failure_reason = soc_failure_reason
+                break
             for cell_index, cell_length_m in enumerate(cell_lengths_m):
                 next_cell_index = (cell_index + 1) % track.cell_count
                 curvature_per_m = track.curvature_per_m[cell_index]
@@ -425,13 +462,15 @@ class EnduranceSimulator:
                             config.regenerative_braking_soc_threshold
                         ),
                     )
-                time_before_step_s = vehicle.time_s
                 try:
-                    vehicle.update_state(controls, cell_length_m)
+                    timestep_s = advance_vehicle_by_distance(
+                        vehicle,
+                        controls,
+                        cell_length_m,
+                    )
                 except ValueError as error:
                     failure_reason = f"vehicle stalled on the endurance path: {error}"
                     break
-                timestep_s = vehicle.time_s - time_before_step_s
                 if timestep_s <= 0.0:
                     failure_reason = "vehicle stalled on the endurance path"
                     break
@@ -489,8 +528,8 @@ class EnduranceSimulator:
                             path_brake_pressure_limited
                         )
                     recorder.record(snapshot, timestep_s=timestep_s)
-                if vehicle.battery.state_of_charge <= 0.0:
-                    failure_reason = "battery state of charge depleted"
+                if vehicle.battery.state_of_charge <= config.minimum_state_of_charge:
+                    failure_reason = soc_failure_reason
                     break
 
             if failure_reason is not None:

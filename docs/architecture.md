@@ -32,6 +32,7 @@ flowchart LR
     Vehicle --> Aero
     Vehicle --> Chassis
     Vehicle --> Suspension
+    Vehicle --> Alignment
     Vehicle --> Tire
     Vehicle --> Brakes
     Battery -->|"DC terminal limit"| Drivetrain
@@ -42,6 +43,9 @@ flowchart LR
     Aero -->|"axle downforce"| Suspension
     Suspension -->|"body roll"| Aero
     Chassis --> Suspension
+    Chassis --> Alignment
+    Suspension -->|"body roll and wheel travel"| Alignment
+    Alignment -->|"four steer and camber angles"| Tire
     Suspension -->|"four normal loads"| Tire
     Brakes -->|"four force requests"| Tire
 ```
@@ -66,7 +70,33 @@ domain. Implementations are grouped by the subteam that owns their physics:
 across subteams. `vehicle_model.__init__` re-exports the main classes, while
 the subteam packages provide explicit ownership-oriented imports.
 
-## Distance-domain vehicle integration
+## Inside the vehicle subsystems
+
+[Reading and changing the vehicle model](vehicle_model.md) maps every physical
+responsibility to its implementation module and explains the sign conventions.
+The top-level coordinator passes named results between distinct stages:
+`ForceRequests` -> `OperatingPoint` -> `MotionStep` / `PowerFlow` -> committed
+component and vehicle state.
+
+`dynamics.py` owns the coupled force solve, `motion.py` owns motion integration,
+and `limits.py` owns the spatial braking envelope. Within each subsystem:
+
+- Aero separates passive forces, active deployment, shared results, and setup
+  defaults.
+- Electrical separates ideal sources, pack history, and instantaneous terminal
+  circuit math. OCV and RC models share the same circuit implementation.
+- Powertrain owns propulsion conversion, rotational inertia, regeneration, and
+  wheel-to-pack power accounting. Motor, inverter, and chain models keep their
+  own physical conversion laws.
+- Mechanical separates tire laws from contact-force allocation and wheel state,
+  suspension state from load-transfer calculations, alignment from measured
+  camber curves, and brake state from hydraulic calibration.
+
+Compatibility import modules retain established paths. Component protocols,
+vehicle construction, mutable setup fields, and telemetry channels remain the
+public contracts.
+
+## Time-domain vehicle integration
 
 The spatial lap solvers query limits such as maximum tire force, maximum motor
 torque, and braking deceleration. These calculations should be deterministic
@@ -74,15 +104,23 @@ for a given operating point; the solvers do not rely on a previous timestep's
 mutable state.
 
 Simulation and recorded-control replay call
-`Vehicle.update_state(controls, distance_step_m)`. Distance is the independent
-integration coordinate. The vehicle solves its final speed and elapsed time for
-the cell, then updates time-dependent components with that internally derived
-timestep. Call `Vehicle.reset_state()` before each independent run.
+`Vehicle.update_state(controls, timestep_s)`. Time is the independent
+integration coordinate. Steering sets Ackermann front-wheel angles. Candidate
+body sideslip and yaw rate create a distinct local velocity and slip angle at
+every contact patch. The vehicle solves acceleration, body sideslip, and
+curvature against longitudinal force, lateral force, and steady yaw-moment
+balance; curvature is therefore an outcome of the tire forces. It then solves
+final speed and traveled distance
+and updates every component with the same supplied time step. Call
+`Vehicle.reset_state()` before each independent run.
 
-This keeps track curvature, driver controls, and comparisons aligned at the
-same station even when simulated speed differs from measured speed. Temperature,
-state of charge, slip relaxation, and other history-dependent behavior still
-evolve in seconds, but time is output state rather than the integration input.
+See [How `Vehicle.update_state` works](update_state.md) for the full solve and
+integration flowcharts, equations, and component update order.
+
+Spatial event solvers use an adapter that solves the time step needed to land
+on the next track-cell boundary before committing a time-domain vehicle update.
+Temperature, state of charge, slip relaxation, and other history-dependent
+behavior therefore evolve directly in seconds.
 
 ## Component ownership
 
@@ -92,12 +130,13 @@ evolve in seconds, but time is output state rather than the integration input.
 | `Inverter` | DC-to-motor efficiency | efficiency map, current/voltage limits, thermal state |
 | `Motor` | peak/continuous torque curves, power limits, RPM limit, efficiency, rotor inertia | efficiency map, voltage dependence, thermal derating |
 | `ChainDrive` | sprocket ratio, efficiency, input/output inertia | chain loss map, compliance, sprocket selection |
-| `Drivetrain` | component coordination and driven-wheel inertia | regen coordination, coupled electrical limits |
+| `Drivetrain` and powertrain power flow | component coordination, driven-wheel inertia, propulsion and regen accounting | coupled electrical limits, efficiency maps |
 | `Aero` / `ActiveAero` | frontal area, drag/lift coefficients, aero balance, linear body-roll downforce loss, switchable straight-line low-drag configuration | ride-height/yaw maps, actuator dynamics, center of pressure |
 | `Chassis` | wheelbase, track widths, CG height, static weight distribution | roll centers, sprung/unsprung masses |
 | `Suspension` | longitudinal transfer, quasi-static lateral transfer, roll stiffness and TLLTD | geometric transfer, springs, dampers, heave/pitch |
-| `Tire` | rolling radius, four-corner load-sensitive combined forces, longitudinal slip/relaxation | loaded-radius model, full combined-slip curve, temperature, wear |
-| `Brakes` | hydraulic pressure map and brake-force requests | thermal limits, ABS control |
+| `WheelAlignment` | anti-Ackermann, toe, static camber, caster camber, and camber gain | measured steering-linkage and suspension-kinematics maps |
+| `Tire` | rolling radius, four-corner kinematics and wheel state, Pacejka lateral force, combined force capacity, longitudinal slip/relaxation | loaded-radius model, full combined-slip curve, temperature, wear |
+| `Brakes` and hydraulic maps | brake setup/state, hydraulic calibration, and brake-force requests | thermal limits, ABS control |
 
 The battery boundary is the DC pack terminal. The default one-RC pack model
 computes OCV, ohmic drop, and polarization before that boundary; propulsion
@@ -127,7 +166,9 @@ one another's implementation:
 
 - `AeroForces` carries drag and front/rear downforce.
 - `TireNormalLoads` carries all four normal loads.
-- `TireStates` carries every contact patch's forces, capacities, and slip.
+- `WheelAlignmentState` carries each wheel's steering angle, camber, and bump/droop travel.
+- `TireStates` carries every contact patch's steering angle, local velocity,
+  wheel speed, wheel/body-frame forces, capacities, and slip.
 - `Controls` carries driver or optimizer requests.
 
 Keep new result objects in similarly focused modules. This prevents a solver
@@ -147,23 +188,43 @@ src/
 |   `-- data/                   # recorded-lap adapters and replay
 |-- vehicle_model/
 |   |-- interfaces.py
-|   |-- vehicle.py
+|   |-- vehicle.py              # assembly and public state
+|   |-- dynamics.py             # coupled force balance
+|   |-- motion.py               # motion integration
+|   |-- limits.py               # whole-vehicle braking envelope
 |   |-- environment.py
 |   |-- electrical/
-|   |   |-- battery.py
+|   |   |-- battery.py          # compatibility imports
+|   |   |-- battery_ideal.py
+|   |   |-- battery_pack.py     # OCV and RC history
+|   |   |-- battery_circuit.py  # shared terminal equations
+|   |   |-- battery_parameters.py
 |   |   |-- battery_ocv.py
 |   |   `-- inverter.py
 |   |-- aero/
-|   |   `-- model.py
+|   |   |-- model.py            # compatibility imports
+|   |   |-- passive.py
+|   |   |-- active.py
+|   |   |-- forces.py
+|   |   `-- parameters.py
 |   |-- powertrain/
 |   |   |-- drivetrain.py
 |   |   |-- motor.py
+|   |   |-- power_flow.py
 |   |   `-- chain_drive.py
 |   `-- mech/
 |       |-- chassis.py
+|       |-- alignment.py
+|       |-- camber_gain.py
 |       |-- suspension.py
+|       |-- load_transfer.py
 |       |-- tire.py
+|       |-- tire_forces.py
+|       |-- wheel_state.py
+|       |-- wheels.py
+|       |-- pacejka*.py
 |       |-- brakes.py
+|       |-- brake_hydraulics.py
 |       `-- loads.py
 `-- utils/
     `-- units.py

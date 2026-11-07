@@ -5,7 +5,7 @@ profile and track. Every event returns estimated points, timing, energy,
 completion status, and aligned component telemetry through one result type.
 
 The vehicle is composed from independently replaceable motor, inverter,
-chain-drive, battery, aero, chassis, suspension, tire, and brake models. The
+chain-drive, battery, aero, chassis, suspension, wheel-alignment, tire, and brake models. The
 included implementations are intentionally simple baselines; their interfaces
 are stable seams for higher-fidelity models.
 
@@ -16,6 +16,8 @@ main classes for concise imports.
 
 ## Documentation
 
+- [Vehicle model guide](docs/vehicle_model.md): where each subsystem owns its
+  parameters, calculations, and state, plus the reading order for a time step.
 - [Architecture](docs/architecture.md): package boundaries, data flow, state,
   and parameter ownership.
 - [Event simulation](docs/event_simulation.md): the shared profile/track API,
@@ -85,14 +87,16 @@ vehicle.validate()
 ```
 
 The active-aero model has automatic straight-line deployment plus forced
-positions for switching and fail-safe studies. The vehicle factory includes
-the installed-system mass penalty:
+positions for switching and fail-safe studies. Configure it explicitly and
+include any installed-system mass penalty in the vehicle mass:
 
 ```python
 from vehicle_model import ActiveAero, Vehicle
+from utils.units import pounds_to_kilograms
 
-vehicle = Vehicle.with_active_aero(
-    active_aero_mass_penalty_lb=3.0,
+baseline = Vehicle()
+vehicle = Vehicle(
+    mass_kg=baseline.mass_kg + pounds_to_kilograms(3.0),
     aero=ActiveAero(
         drag_reduction_fraction=0.30,
         downforce_reduction_fraction=0.30,
@@ -160,15 +164,19 @@ vehicle's maximum speed wherever cornering does not impose a lower limit.
 specified starting speed, integrates the resulting profile, and creates
 telemetry.
 
-## Distance-domain simulation
+## Time-domain simulation
 
-`Vehicle.update_state(controls, distance_step_m)` advances exactly one positive
-spatial cell. It solves `v_next^2 = v^2 + 2*a*distance_step`, derives elapsed
-time internally from cell-average speed, and passes that time to the battery,
-drivetrain, brake, suspension, tire, and aero states. The tire model resolves
-normal load, lateral force, drive/brake force, combined capacity, and slip at
-each contact patch. Motor speed follows the average driven-tire surface speed,
-and rotational inertia is retained as equivalent longitudinal mass.
+`Vehicle.update_state(controls, timestep_s)` advances exactly one positive time
+step. Steering sets the individual front-wheel angles. Body sideslip, yaw
+rate, and each wheel's position produce four local velocities and slip angles,
+which feed the default UPC Pacejka tire models, scaled to 90% of their published
+lateral and longitudinal forces. The solver iterates acceleration,
+body sideslip, and curvature against force and steady yaw-moment balance, so
+curvature is an output of the tire forces. It integrates
+speed and distance with constant-acceleration kinematics and passes the same
+time step to every component. Motor speed follows the average driven-tire
+surface speed, and rotational inertia is retained as equivalent longitudinal
+mass.
 
 Explicit control sequences can be run with the public `replay_controls()` API.
 `RecordedLap` loads synchronized track and control data for validation.
@@ -177,7 +185,7 @@ Replay telemetry is a namespaced mapping populated by the vehicle and each
 component:
 
 ```python
-telemetry = replay_controls(vehicle, controls, distance_step_m=0.25)
+telemetry = replay_controls(vehicle, controls, timestep_s=0.01)
 speed_mps = telemetry["vehicle.speed_mps"]
 traction_limited = telemetry["limits.traction_active"]
 all_channels = telemetry.as_dict()

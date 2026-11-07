@@ -43,9 +43,13 @@ class ChainDrive:
         )
 
     def wheel_torque_from_motor_torque_nm(self, motor_torque_nm: float) -> float:
+        """Apply reduction and mechanical loss in the propulsion direction."""
+
         return motor_torque_nm * self.ratio * self.efficiency
 
     def motor_torque_from_wheel_torque_nm(self, wheel_torque_nm: float) -> float:
+        """Return input shaft torque needed to deliver the requested wheel torque."""
+
         if wheel_torque_nm < 0:
             raise ValueError("wheel_torque_nm cannot be negative without regen")
         return wheel_torque_nm / (self.ratio * self.efficiency)
@@ -65,8 +69,4 @@ class ChainDrive:
         return wheel_power_w / self.efficiency
 
 
-# Compatibility name for external scripts written before the terminology was
-# made hardware-specific. New code should import and construct ChainDrive.
-FinalDrive = ChainDrive
-
-__all__ = ["ChainDrive", "FinalDrive"]
+__all__ = ["ChainDrive"]
